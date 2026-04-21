@@ -1,16 +1,9 @@
 {
-  "version": 2,
-  "name": "sistema-criativo-landing",
-  "builds": [
+  "cleanUrls": true,
+  "rewrites": [
     {
-      "src": "index.html",
-      "use": "@vercel/static"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "/index.html"
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ]
 }

@@ -277,3 +277,47 @@ Return ONLY the JSON array. Include exactly ${weekDays.length} items, one per po
     throw new Error('AI returned invalid JSON for weekly plan. Please try again.');
   }
 }
+// ---- Generate Brand DNA ----
+
+export async function generateBrandDNA(params: {
+  rawData: string;
+  language?: string;
+}): Promise<BrandDNA> {
+  const { rawData, language = 'pt-BR' } = params;
+
+  const prompt = `You are a branding and marketing strategist.
+
+Analyze the following raw information about a brand/creator and extract a structured Brand DNA.
+
+Raw information:
+---
+${rawData}
+---
+
+Generate a comprehensive Brand DNA in ${language}.
+
+Return a JSON object with this exact structure:
+{
+  "bio": "A concise, professional bio for social media (max 160 chars)",
+  "bio_link": "A likely URL if found, or empty string",
+  "market": "The primary niche and target market",
+  "content_pillars": "3-5 key content topics, comma-separated",
+  "target_audience": "Detailed description of the ideal follower/customer",
+  "tone_of_voice": "Description of how the brand communicates (adjectives and style)",
+  "key_messages": "Core messages the brand always communicates",
+  "brand_colors": "Suggested or identified brand colors",
+  "visual_references": "Identified or suggested visual styles/references",
+  "competitors": "Potential competitors or reference creators in the niche"
+}
+
+Be specific, strategic, and professional.
+Return ONLY the JSON object.`;
+
+  const text = await callAI(prompt);
+  try {
+    const result: BrandDNA = JSON.parse(text);
+    return result;
+  } catch {
+    throw new Error('AI returned invalid JSON for Brand DNA. Please try again.');
+  }
+}

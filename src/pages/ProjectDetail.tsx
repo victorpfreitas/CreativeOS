@@ -4,6 +4,7 @@ import { Link, useParams, useNavigate } from 'react-router-dom';
 import type { Project, BrandDNA } from '../lib/types';
 import * as db from '../lib/database';
 import { compileBrandDNA } from '../services/geminiService';
+import MagicDNAModal from '../components/project/MagicDNAModal';
 
 const EMPTY_DNA: BrandDNA = {
   bio: '',
@@ -66,6 +67,7 @@ export default function ProjectDetail() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [openSections, setOpenSections] = useState({ profile: true, content: true, voice: false, visual: false });
+  const [magicModalOpen, setMagicModalOpen] = useState(false);
 
   useEffect(() => { if (id) load(); }, [id]);
 
@@ -104,6 +106,20 @@ export default function ProjectDetail() {
     } finally {
       setSaving(false);
     }
+  }
+
+  function handleApplyMagicDNA(generatedDna: BrandDNA) {
+    setDna((prev) => ({
+      ...prev,
+      ...generatedDna
+    }));
+    // Open relevant sections to show the data
+    setOpenSections({
+      profile: true,
+      content: true,
+      voice: true,
+      visual: true
+    });
   }
 
   if (loading) {
@@ -187,9 +203,18 @@ export default function ProjectDetail() {
       {/* Brand DNA hint */}
       <div className="flex items-start gap-3 bg-indigo-50 border border-indigo-200 rounded-xl p-4">
         <Sparkles className="w-5 h-5 text-indigo-500 flex-shrink-0 mt-0.5" />
-        <p className="text-sm text-indigo-800">
-          Quanto mais completo o Brand DNA, mais precisa é a geração de conteúdo. Essas informações são usadas pela IA em todos os carrosséis deste projeto.
-        </p>
+        <div className="flex-1">
+          <p className="text-sm text-indigo-800">
+            Quanto mais completo o Brand DNA, mais precisa é a geração de conteúdo. Essas informações são usadas pela IA em todos os carrosséis deste projeto.
+          </p>
+        </div>
+        <button
+          onClick={() => setMagicModalOpen(true)}
+          className="bg-white border border-indigo-200 text-indigo-600 hover:bg-indigo-50 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm flex-shrink-0"
+        >
+          <Sparkles className="w-3.5 h-3.5" />
+          Gerar com IA
+        </button>
       </div>
 
       {/* Section: Perfil */}
@@ -329,6 +354,12 @@ export default function ProjectDetail() {
           {saving ? 'Salvando...' : saved ? 'Salvo!' : 'Salvar Brand DNA'}
         </button>
       </div>
+
+      <MagicDNAModal
+        open={magicModalOpen}
+        onClose={() => setMagicModalOpen(false)}
+        onApply={handleApplyMagicDNA}
+      />
     </div>
   );
 }

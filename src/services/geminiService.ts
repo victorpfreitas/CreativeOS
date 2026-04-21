@@ -9,29 +9,69 @@ interface GeminiResponse {
   candidates?: { content?: { parts?: { text?: string }[] } }[];
 }
 
-async function callGemini(prompt: string): Promise<string> {
-  const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature: 0.8,
-        maxOutputTokens: 4096,
-        responseMimeType: 'application/json',
+const OPENROUTER_API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY || '';
+
+async function callAI(prompt: string): Promise<string> {
+  // First try Gemini
+  try {
+    const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0.8,
+          maxOutputTokens: 4096,
+          responseMimeType: 'application/json',
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      const err = await response.text();
+      throw new Error(`Gemini API error: ${response.status} - ${err}`);
+    }
+
+    const data = await response.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text) throw new Error('Empty response from Gemini');
+    
+    return text;
+  } catch (err: any) {
+    console.warn('Gemini failed, trying OpenRouter fallback...', err.message);
+    
+    // Fallback to OpenRouter
+    if (!OPENROUTER_API_KEY) {
+      throw new Error('Gemini failed and no OpenRouter API key found.');
+    }
+
+    const openRouterResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+        'Content-Type': 'application/json',
       },
-    }),
-  });
+      body: JSON.stringify({
+        model: 'google/gemma-2-9b-it:free', // Using a reliable free model
+        messages: [{ role: 'user', content: prompt + '\n\nIMPORTANT: Return ONLY valid JSON, nothing else.' }]
+      })
+    });
 
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`Gemini API error: ${response.status} - ${err}`);
+    if (!openRouterResponse.ok) {
+      const orErr = await openRouterResponse.text();
+      throw new Error(`OpenRouter API error: ${openRouterResponse.status} - ${orErr}`);
+    }
+
+    const orData = await openRouterResponse.json();
+    let orText = orData.choices?.[0]?.message?.content;
+    
+    if (!orText) throw new Error('Empty response from OpenRouter');
+
+    // Clean up markdown code blocks if the model wrapped the JSON
+    orText = orText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    
+    return orText;
   }
-
-  const data: GeminiResponse = await response.json();
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) throw new Error('Empty response from Gemini');
-  return text;
 }
 
 // ---- Generate Hooks ----
@@ -60,7 +100,7 @@ Return a JSON array of strings. Example:
 
 Return ONLY the JSON array, no other text.`;
 
-  const text = await callGemini(prompt);
+  const text = await callAI(prompt);
   const hooks: string[] = JSON.parse(text);
   return hooks;
 }
@@ -119,7 +159,7 @@ Return a JSON object with this exact structure:
 
 Return ONLY the JSON object.`;
 
-  const text = await callGemini(prompt);
+  const text = await callAI(prompt);
   const result = JSON.parse(text);
   return result;
 }

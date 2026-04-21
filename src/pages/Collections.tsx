@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Images, Search, Loader2, Check } from 'lucide-react';
+import { Plus, Images, Search, Loader2, Check, Upload } from 'lucide-react';
 import Modal from '../components/ui/Modal';
 import type { ImageCollection } from '../lib/types';
 import * as db from '../lib/database';
@@ -17,6 +17,7 @@ export default function Collections() {
   const [photos, setPhotos] = useState<PexelsPhoto[]>([]);
   const [searching, setSearching] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [uploading, setUploading] = useState<string | null>(null);
 
   useEffect(() => { loadCollections(); }, []);
 
@@ -69,6 +70,27 @@ export default function Collections() {
     finally { setSaving(false); }
   }
 
+  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>, collectionId: string) {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    
+    setUploading(collectionId);
+    try {
+      const uploads = [];
+      for (let i = 0; i < files.length; i++) {
+        const url = await db.uploadImageToStorage(files[i]);
+        uploads.push({ collection_id: collectionId, url, source: 'upload' });
+      }
+      await db.addImagesToCollection(uploads);
+      loadCollections();
+    } catch (err) {
+      console.error('Error uploading files:', err);
+    } finally {
+      setUploading(null);
+      e.target.value = ''; // Reset input
+    }
+  }
+
   if (loading) return <div className="space-y-6"><div className="h-10 w-48 bg-slate-200 rounded-lg animate-pulse" /></div>;
 
   return (
@@ -108,9 +130,16 @@ export default function Collections() {
                   <span className={`text-xs px-2 py-0.5 rounded-full ${col.type === 'hook' ? 'bg-indigo-100 text-indigo-700' : 'bg-emerald-100 text-emerald-700'}`}>{col.type}</span>
                 </div>
                 <p className="text-sm text-slate-500 mb-3">{col.images?.length || 0} images</p>
-                <div className="flex gap-2">
-                  <button onClick={() => { setSearchModal(col.id); setSelected(new Set()); setPhotos([]); setQuery(''); }} className="text-sm text-indigo-600 hover:text-indigo-700 font-medium">Add Images</button>
-                  <button onClick={() => handleDelete(col.id)} className="text-sm text-red-500 hover:text-red-600 font-medium ml-auto">Delete</button>
+                <div className="flex flex-col gap-2">
+                  <div className="flex gap-2">
+                    <button onClick={() => { setSearchModal(col.id); setSelected(new Set()); setPhotos([]); setQuery(''); }} className="text-sm text-indigo-600 hover:text-indigo-700 font-medium">Search Pexels</button>
+                    <label className="text-sm text-indigo-600 hover:text-indigo-700 font-medium cursor-pointer flex items-center gap-1">
+                      {uploading === col.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
+                      Upload
+                      <input type="file" multiple accept="image/*" className="hidden" onChange={(e) => handleFileUpload(e, col.id)} disabled={uploading === col.id} />
+                    </label>
+                  </div>
+                  <button onClick={() => handleDelete(col.id)} className="text-sm text-red-500 hover:text-red-600 font-medium self-end">Delete</button>
                 </div>
               </div>
             </div>

@@ -2,11 +2,12 @@
 // Made by Human — Database Operations (Firebase Firestore)
 // ============================================================
 
-import { db } from './firebase';
+import { db, storage } from './firebase';
 import {
   collection, doc, getDocs, getDoc, addDoc, updateDoc, deleteDoc,
   query, orderBy, where, Timestamp,
 } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 // Sort helper — avoids composite index requirement for compound queries
 function sortByCreatedAt<T extends { created_at?: string }>(arr: T[]): T[] {
@@ -258,6 +259,14 @@ export async function addImagesToCollection(images: { collection_id: string; url
 
 export async function removeImageFromCollection(id: string): Promise<void> {
   await deleteDoc(doc(db, 'collection_images', id));
+}
+
+export async function uploadImageToStorage(file: File): Promise<string> {
+  const ext = file.name.split('.').pop();
+  const filename = `${Date.now()}_${Math.random().toString(36).substring(2)}.${ext}`;
+  const storageRef = ref(storage, `uploads/${filename}`);
+  await uploadBytes(storageRef, file);
+  return await getDownloadURL(storageRef);
 }
 
 // ---- Dashboard Stats ----

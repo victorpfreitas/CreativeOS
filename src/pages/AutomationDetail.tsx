@@ -70,10 +70,25 @@ export default function AutomationDetail() {
         knowledgeBase: project?.knowledge_base,
       });
 
-      // Add placeholder images to slides
-      const slidesWithImages = result.slides.map((slide) => ({
+      // Fetch collection images if automation has them assigned
+      let hookImages: string[] = [];
+      let bodyImages: string[] = [];
+      
+      if (automation.hook_collection_id) {
+        const col = await db.getCollection(automation.hook_collection_id);
+        if (col && col.images) hookImages = col.images.map((i) => i.url);
+      }
+      if (automation.body_collection_id) {
+        const col = await db.getCollection(automation.body_collection_id);
+        if (col && col.images) bodyImages = col.images.map((i) => i.url);
+      }
+
+      const getRandomImage = (images: string[]) => images.length > 0 ? images[Math.floor(Math.random() * images.length)] : '';
+
+      // Add assigned or placeholder images to slides
+      const slidesWithImages = result.slides.map((slide, index) => ({
         ...slide,
-        image_url: '',
+        image_url: index === 0 ? getRandomImage(hookImages) : getRandomImage(bodyImages),
       }));
 
       const slideshow = await db.createSlideshow({

@@ -1,12 +1,11 @@
 import { NavLink } from 'react-router-dom';
-import { Home, FolderGit2, Zap, Settings, Calendar, Images, Film } from 'lucide-react';
+import { Home, FolderGit2, Zap, Settings, Images, Film } from 'lucide-react';
 
 export default function Sidebar() {
   const links = [
     { to: '/', icon: Home, label: 'Dashboard' },
     { to: '/projects', icon: FolderGit2, label: 'Projects' },
     { to: '/automations', icon: Zap, label: 'Automations' },
-    { to: '/schedule', icon: Calendar, label: 'Schedule' },
     { to: '/collections', icon: Images, label: 'Collections' },
     { to: '/gallery', icon: Film, label: 'Gallery' },
   ];

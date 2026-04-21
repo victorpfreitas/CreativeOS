@@ -11,7 +11,7 @@ import type {
   Project, Automation, Hook, Slideshow,
   ImageCollection, CollectionImage,
   CreateProjectInput, CreateAutomationInput, CreateCollectionInput,
-  Slide,
+  Slide, ContentAnalysis, ContentPlan,
 } from './types';
 
 // Sort helper — avoids composite index requirement for compound queries
@@ -126,6 +126,10 @@ export async function createHooks(hooks: { automation_id: string; text: string }
 
 export async function markHookUsed(id: string): Promise<void> {
   await updateDoc(doc(db, 'hooks', id), { used: true });
+}
+
+export async function updateHook(id: string, text: string): Promise<void> {
+  await updateDoc(doc(db, 'hooks', id), { text });
 }
 
 export async function deleteHook(id: string): Promise<void> {
@@ -281,6 +285,48 @@ export async function addImagesToCollection(images: { collection_id: string; url
 
 export async function removeImageFromCollection(id: string): Promise<void> {
   await deleteDoc(doc(db, 'collection_images', id));
+}
+
+// ---- Content Analysis ----
+
+export async function getContentAnalyses(projectId: string): Promise<ContentAnalysis[]> {
+  const q = query(collection(db, 'content_analyses'), where('project_id', '==', projectId));
+  const snap = await getDocs(q);
+  return sortByCreatedAt(snap.docs.map((d) => docToObj<ContentAnalysis>(d)));
+}
+
+export async function createContentAnalysis(input: Omit<ContentAnalysis, 'id' | 'created_at'>): Promise<ContentAnalysis> {
+  const data = { ...input, created_at: Timestamp.now().toDate().toISOString() };
+  const ref = await addDoc(collection(db, 'content_analyses'), data);
+  return { id: ref.id, ...data } as ContentAnalysis;
+}
+
+export async function deleteContentAnalysis(id: string): Promise<void> {
+  await deleteDoc(doc(db, 'content_analyses', id));
+}
+
+// ---- Content Plans ----
+
+export async function getContentPlan(projectId: string, weekStart: string): Promise<ContentPlan | null> {
+  const q = query(
+    collection(db, 'content_plans'),
+    where('project_id', '==', projectId),
+    where('week_start', '==', weekStart)
+  );
+  const snap = await getDocs(q);
+  if (snap.empty) return null;
+  return docToObj<ContentPlan>(snap.docs[0]);
+}
+
+export async function upsertContentPlan(input: Omit<ContentPlan, 'id' | 'created_at'>): Promise<ContentPlan> {
+  const existing = await getContentPlan(input.project_id, input.week_start);
+  if (existing) {
+    await updateDoc(doc(db, 'content_plans', existing.id), { items: input.items });
+    return { ...existing, items: input.items };
+  }
+  const data = { ...input, created_at: Timestamp.now().toDate().toISOString() };
+  const ref = await addDoc(collection(db, 'content_plans'), data);
+  return { id: ref.id, ...data } as ContentPlan;
 }
 
 // ---- Dashboard Stats ----

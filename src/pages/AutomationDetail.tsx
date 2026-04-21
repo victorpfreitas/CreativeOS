@@ -1,19 +1,21 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Zap, RefreshCw, Loader2, Film, Trash2, CheckCircle, Circle } from 'lucide-react';
-import { Link, useParams, useNavigate } from 'react-router-dom';
+import { ArrowLeft, Zap, RefreshCw, Loader2, Film, Trash2, CheckCircle, Circle, ExternalLink, Check, Pencil, X } from 'lucide-react';
+import { Link, useParams } from 'react-router-dom';
 import type { Automation, Hook, Slideshow } from '../lib/types';
 import * as db from '../lib/database';
 import { generateHooks, generateSlideshow } from '../services/geminiService';
 
 export default function AutomationDetail() {
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
   const [automation, setAutomation] = useState<Automation | null>(null);
   const [hooks, setHooks] = useState<Hook[]>([]);
   const [slideshows, setSlideshows] = useState<Slideshow[]>([]);
   const [loading, setLoading] = useState(true);
   const [generatingHooks, setGeneratingHooks] = useState(false);
   const [generatingSlideshow, setGeneratingSlideshow] = useState<string | null>(null);
+  const [lastCreated, setLastCreated] = useState<Slideshow | null>(null);
+  const [editingHook, setEditingHook] = useState<string | null>(null);
+  const [editText, setEditText] = useState('');
 
   useEffect(() => { if (id) loadData(); }, [id]);
 
@@ -45,9 +47,7 @@ export default function AutomationDetail() {
         knowledgeBase: project?.knowledge_base,
         count: 10,
       });
-      await db.createHooks(
-        hookTexts.map((text) => ({ automation_id: automation.id, text }))
-      );
+      await db.createHooks(hookTexts.map((text) => ({ automation_id: automation.id, text })));
       loadData();
     } catch (err) {
       console.error('Error generating hooks:', err);
@@ -59,6 +59,7 @@ export default function AutomationDetail() {
   async function handleGenerateSlideshow(hook: Hook) {
     if (!automation) return;
     setGeneratingSlideshow(hook.id);
+    setLastCreated(null);
     try {
       const project = automation.project;
       const result = await generateSlideshow({
@@ -70,25 +71,23 @@ export default function AutomationDetail() {
         knowledgeBase: project?.knowledge_base,
       });
 
-      // Fetch collection images if automation has them assigned
       let hookImages: string[] = [];
       let bodyImages: string[] = [];
-      
+
       if (automation.hook_collection_id) {
         const col = await db.getCollection(automation.hook_collection_id);
-        if (col && col.images) hookImages = col.images.map((i) => i.url);
+        if (col?.images) hookImages = col.images.map((i) => i.url);
       }
       if (automation.body_collection_id) {
         const col = await db.getCollection(automation.body_collection_id);
-        if (col && col.images) bodyImages = col.images.map((i) => i.url);
+        if (col?.images) bodyImages = col.images.map((i) => i.url);
       }
 
-      const getRandomImage = (images: string[]) => images.length > 0 ? images[Math.floor(Math.random() * images.length)] : '';
+      const getRandom = (imgs: string[]) => imgs.length > 0 ? imgs[Math.floor(Math.random() * imgs.length)] : '';
 
-      // Add assigned or placeholder images to slides
       const slidesWithImages = result.slides.map((slide, index) => ({
         ...slide,
-        image_url: index === 0 ? getRandomImage(hookImages) : getRandomImage(bodyImages),
+        image_url: index === 0 ? getRandom(hookImages) : getRandom(bodyImages),
       }));
 
       const slideshow = await db.createSlideshow({
@@ -99,7 +98,8 @@ export default function AutomationDetail() {
       });
 
       await db.markHookUsed(hook.id);
-      navigate(`/editor/${slideshow.id}`);
+      setLastCreated(slideshow);
+      loadData();
     } catch (err) {
       console.error('Error generating slideshow:', err);
     } finally {
@@ -110,9 +110,37 @@ export default function AutomationDetail() {
   async function handleDeleteHook(hookId: string) {
     try {
       await db.deleteHook(hookId);
-      loadData();
+      setHooks((prev) => prev.filter((h) => h.id !== hookId));
     } catch (err) {
       console.error('Error deleting hook:', err);
+    }
+  }
+
+  async function handleDeleteSlideshow(slideshowId: string) {
+    if (!confirm('Remover este carrossel?')) return;
+    try {
+      await db.deleteSlideshow(slideshowId);
+      setSlideshows((prev) => prev.filter((s) => s.id !== slideshowId));
+      if (lastCreated?.id === slideshowId) setLastCreated(null);
+    } catch (err) {
+      console.error('Error deleting slideshow:', err);
+    }
+  }
+
+  function startEditHook(hook: Hook) {
+    setEditingHook(hook.id);
+    setEditText(hook.text);
+  }
+
+  async function saveEditHook(hookId: string) {
+    if (!editText.trim()) return;
+    try {
+      await db.updateHook(hookId, editText.trim());
+      setHooks((prev) => prev.map((h) => h.id === hookId ? { ...h, text: editText.trim() } : h));
+    } catch (err) {
+      console.error('Error updating hook:', err);
+    } finally {
+      setEditingHook(null);
     }
   }
 
@@ -128,8 +156,8 @@ export default function AutomationDetail() {
   if (!automation) {
     return (
       <div className="text-center py-12">
-        <p className="text-slate-500">Automation not found.</p>
-        <Link to="/automations" className="text-indigo-600 hover:underline mt-2 inline-block">Back to Automations</Link>
+        <p className="text-slate-500">Automação não encontrada.</p>
+        <Link to="/automations" className="text-indigo-600 hover:underline mt-2 inline-block">Voltar</Link>
       </div>
     );
   }
@@ -160,25 +188,47 @@ export default function AutomationDetail() {
       {/* Stats */}
       <div className="grid grid-cols-3 gap-4">
         <div className="bg-white p-4 rounded-xl border border-slate-200">
-          <p className="text-sm text-slate-500">Available Hooks</p>
+          <p className="text-sm text-slate-500">Hooks disponíveis</p>
           <p className="text-2xl font-bold text-slate-900">{unusedHooks.length}</p>
         </div>
         <div className="bg-white p-4 rounded-xl border border-slate-200">
-          <p className="text-sm text-slate-500">Used Hooks</p>
+          <p className="text-sm text-slate-500">Hooks usados</p>
           <p className="text-2xl font-bold text-slate-900">{usedHooks.length}</p>
         </div>
         <div className="bg-white p-4 rounded-xl border border-slate-200">
-          <p className="text-sm text-slate-500">Slideshows</p>
+          <p className="text-sm text-slate-500">Carrosséis</p>
           <p className="text-2xl font-bold text-slate-900">{slideshows.length}</p>
         </div>
       </div>
 
-      {/* Hooks */}
+      {/* Success banner após gerar slideshow */}
+      {lastCreated && (
+        <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200 rounded-xl px-5 py-4">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 bg-emerald-500 rounded-full flex items-center justify-center flex-shrink-0">
+              <Check className="w-4 h-4 text-white" />
+            </div>
+            <div>
+              <p className="font-semibold text-emerald-900">Carrossel criado com sucesso!</p>
+              <p className="text-sm text-emerald-700">{lastCreated.slides?.length} slides gerados</p>
+            </div>
+          </div>
+          <Link
+            to={`/editor/${lastCreated.id}`}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-sm font-semibold flex items-center gap-2 transition-colors"
+          >
+            <ExternalLink className="w-4 h-4" />
+            Abrir no editor
+          </Link>
+        </div>
+      )}
+
+      {/* Hook Bank */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm">
         <div className="flex items-center justify-between p-4 border-b border-slate-100">
           <h2 className="font-semibold text-slate-900 flex items-center gap-2">
             <Zap className="w-5 h-5 text-indigo-500" />
-            Hook Bank ({hooks.length} total)
+            Banco de Hooks ({hooks.length} total)
           </h2>
           <button
             onClick={handleGenerateMoreHooks}
@@ -186,49 +236,80 @@ export default function AutomationDetail() {
             className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
           >
             {generatingHooks ? (
-              <><Loader2 className="w-4 h-4 animate-spin" /> Generating...</>
+              <><Loader2 className="w-4 h-4 animate-spin" /> Gerando...</>
             ) : (
-              <><RefreshCw className="w-4 h-4" /> Generate 10 More</>
+              <><RefreshCw className="w-4 h-4" /> Gerar 10 mais</>
             )}
           </button>
         </div>
 
         {hooks.length === 0 ? (
           <div className="p-8 text-center text-slate-400">
-            No hooks yet. Click "Generate 10 More" to get started.
+            Nenhum hook ainda. Clique em "Gerar 10 mais" para começar.
           </div>
         ) : (
           <div className="divide-y divide-slate-100">
             {hooks.map((hook) => (
               <div
                 key={hook.id}
-                className={`flex items-center gap-4 p-4 ${hook.used ? 'opacity-60 bg-slate-50' : 'hover:bg-slate-50'} transition-colors`}
+                className={`flex items-start gap-4 p-4 ${hook.used ? 'opacity-50 bg-slate-50' : 'hover:bg-slate-50'} transition-colors`}
               >
                 {hook.used ? (
-                  <CheckCircle className="w-5 h-5 text-emerald-500 flex-shrink-0" />
+                  <CheckCircle className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />
                 ) : (
-                  <Circle className="w-5 h-5 text-slate-300 flex-shrink-0" />
+                  <Circle className="w-5 h-5 text-slate-300 flex-shrink-0 mt-0.5" />
                 )}
-                <p className="flex-1 text-slate-900 text-sm">{hook.text}</p>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  {!hook.used && (
-                    <button
-                      onClick={() => handleGenerateSlideshow(hook)}
-                      disabled={generatingSlideshow === hook.id}
-                      className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white px-3 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors"
-                    >
-                      {generatingSlideshow === hook.id ? (
-                        <><Loader2 className="w-3 h-3 animate-spin" /> Generating...</>
-                      ) : (
-                        <><Film className="w-3 h-3" /> Create Slideshow</>
-                      )}
-                    </button>
+
+                <div className="flex-1 min-w-0">
+                  {editingHook === hook.id ? (
+                    <div className="flex items-center gap-2">
+                      <textarea
+                        value={editText}
+                        onChange={(e) => setEditText(e.target.value)}
+                        rows={2}
+                        className="flex-1 px-2 py-1 border border-indigo-400 rounded-lg text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+                        autoFocus
+                      />
+                      <button onClick={() => saveEditHook(hook.id)} className="p-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors">
+                        <Check className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => setEditingHook(null)} className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors text-slate-500">
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="text-slate-900 text-sm leading-relaxed">{hook.text}</p>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  {!hook.used && editingHook !== hook.id && (
+                    <>
+                      <button
+                        onClick={() => startEditHook(hook)}
+                        className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors text-slate-400 hover:text-slate-600"
+                        title="Editar hook"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => handleGenerateSlideshow(hook)}
+                        disabled={generatingSlideshow === hook.id}
+                        className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors"
+                      >
+                        {generatingSlideshow === hook.id ? (
+                          <><Loader2 className="w-3 h-3 animate-spin" /> Criando...</>
+                        ) : (
+                          <><Film className="w-3 h-3" /> Criar carrossel</>
+                        )}
+                      </button>
+                    </>
                   )}
                   <button
                     onClick={() => handleDeleteHook(hook.id)}
-                    className="p-1 hover:bg-red-50 rounded text-slate-400 hover:text-red-500 transition-colors"
+                    className="p-1.5 hover:bg-red-50 rounded-lg text-slate-400 hover:text-red-500 transition-colors"
                   >
-                    <Trash2 className="w-4 h-4" />
+                    <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </div>
               </div>
@@ -243,32 +324,52 @@ export default function AutomationDetail() {
           <div className="p-4 border-b border-slate-100">
             <h2 className="font-semibold text-slate-900 flex items-center gap-2">
               <Film className="w-5 h-5 text-emerald-500" />
-              Generated Slideshows ({slideshows.length})
+              Carrosséis gerados ({slideshows.length})
             </h2>
           </div>
-          <div className="divide-y divide-slate-100">
-            {slideshows.map((show) => (
-              <Link
-                key={show.id}
-                to={`/editor/${show.id}`}
-                className="flex items-center gap-4 p-4 hover:bg-slate-50 transition-colors"
-              >
-                <Film className="w-5 h-5 text-emerald-500 flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-slate-900 truncate">
-                    {show.hook?.text || 'Untitled'}
-                  </p>
-                  <p className="text-xs text-slate-500">{show.slides?.length || 0} slides</p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 p-4">
+            {slideshows.map((show) => {
+              const thumb = show.slides?.[0]?.image_url;
+              return (
+                <div key={show.id} className="group relative">
+                  <Link
+                    to={`/editor/${show.id}`}
+                    className="block aspect-[4/5] rounded-xl overflow-hidden bg-slate-100 border border-slate-200 hover:border-indigo-400 hover:shadow-md transition-all"
+                  >
+                    {thumb ? (
+                      <img src={thumb} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-indigo-900 to-slate-900">
+                        <Film className="w-8 h-8 text-indigo-400 opacity-60" />
+                      </div>
+                    )}
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors rounded-xl" />
+                    <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-3 rounded-b-xl">
+                      <p className="text-white text-xs font-medium line-clamp-2 leading-tight">
+                        {show.hook?.text || 'Carrossel'}
+                      </p>
+                      <div className="flex items-center justify-between mt-1">
+                        <span className="text-slate-400 text-[10px]">{show.slides?.length} slides</span>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
+                          show.status === 'published' ? 'bg-emerald-500/80 text-white' :
+                          show.status === 'scheduled' ? 'bg-blue-500/80 text-white' :
+                          'bg-white/20 text-white'
+                        }`}>
+                          {show.status}
+                        </span>
+                      </div>
+                    </div>
+                  </Link>
+                  <button
+                    onClick={() => handleDeleteSlideshow(show.id)}
+                    className="absolute top-2 right-2 p-1.5 bg-black/60 hover:bg-red-600 text-white rounded-lg opacity-0 group-hover:opacity-100 transition-all"
+                    title="Remover"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
                 </div>
-                <span className={`text-xs px-2 py-0.5 rounded-full ${
-                  show.status === 'published' ? 'bg-emerald-100 text-emerald-700' :
-                  show.status === 'scheduled' ? 'bg-blue-100 text-blue-700' :
-                  'bg-slate-100 text-slate-600'
-                }`}>
-                  {show.status}
-                </span>
-              </Link>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

@@ -2,6 +2,8 @@
 // Made by Human — Gemini AI Service
 // ============================================================
 
+import type { BrandDNA, ContentAnalysis, ContentPlanItem } from '../lib/types';
+
 async function callAI(prompt: string): Promise<string> {
   const response = await fetch('/api/ai', {
     method: 'POST',
@@ -16,6 +18,23 @@ async function callAI(prompt: string): Promise<string> {
 
   const data = await response.json();
   return data.text;
+}
+
+// ---- Brand DNA Compiler ----
+
+export function compileBrandDNA(dna: BrandDNA): string {
+  const parts: string[] = [];
+  if (dna.bio) parts.push(`Bio do perfil: ${dna.bio}`);
+  if (dna.bio_link) parts.push(`Link da bio: ${dna.bio_link}`);
+  if (dna.market) parts.push(`Mercado / Nicho: ${dna.market}`);
+  if (dna.content_pillars) parts.push(`Pilares de conteúdo: ${dna.content_pillars}`);
+  if (dna.target_audience) parts.push(`Audiência-alvo: ${dna.target_audience}`);
+  if (dna.tone_of_voice) parts.push(`Tom de voz: ${dna.tone_of_voice}`);
+  if (dna.key_messages) parts.push(`Mensagens-chave: ${dna.key_messages}`);
+  if (dna.brand_colors) parts.push(`Cores da marca: ${dna.brand_colors}`);
+  if (dna.visual_references) parts.push(`Referências visuais: ${dna.visual_references}`);
+  if (dna.competitors) parts.push(`Concorrentes (para se diferenciar): ${dna.competitors}`);
+  return parts.join('\n');
 }
 
 // ---- Generate Hooks ----
@@ -113,5 +132,148 @@ Return ONLY the JSON object.`;
     return result;
   } catch {
     throw new Error('AI returned invalid JSON for slideshow. Please try again.');
+  }
+}
+
+// ---- Regenerate Single Slide ----
+
+export async function regenerateSlide(params: {
+  slideIndex: number;
+  currentText: string;
+  hookText: string;
+  niche: string;
+  narrativePrompt: string;
+  knowledgeBase?: string;
+}): Promise<string> {
+  const { slideIndex, currentText, hookText, niche, narrativePrompt, knowledgeBase } = params;
+
+  const prompt = `You are a TikTok/Instagram content writer.
+
+Rewrite slide ${slideIndex + 1} of a carousel about the niche "${niche}".
+
+The carousel hook (slide 1) is: "${hookText}"
+Current text of slide ${slideIndex + 1}: "${currentText}"
+
+Narrative style: ${narrativePrompt}
+${knowledgeBase ? `Brand knowledge base:\n${knowledgeBase}\n` : ''}
+
+Write a better version of this slide. Keep it concise (max 3 short lines), punchy, and consistent with the hook and narrative style.
+
+Return ONLY the new slide text, no JSON, no quotes, no explanation.`;
+
+  const text = await callAI(prompt);
+  return text.trim();
+}
+
+// ---- Analyze Content ----
+
+export async function analyzeContent(params: {
+  rawData: string;
+  knowledgeBase?: string;
+  language?: string;
+}): Promise<ContentAnalysis['insights']> {
+  const { rawData, knowledgeBase, language = 'pt-BR' } = params;
+
+  const prompt = `You are a social media content strategist.
+
+Analyze the following content performance data from a creator's profile and generate strategic insights.
+
+${knowledgeBase ? `Brand DNA:\n${knowledgeBase}\n\n` : ''}
+
+Content data (may be CSV, JSON, or free text with post metrics):
+---
+${rawData}
+---
+
+Based on this data, generate a comprehensive analysis in ${language}.
+
+Return a JSON object with this exact structure:
+{
+  "summary": "2-3 sentences summarizing overall content performance and main finding",
+  "best_performers": [
+    "Description of top performing content and WHY it worked (pattern, format, topic, hook style)",
+    "..."
+  ],
+  "worst_performers": [
+    "Description of underperforming content and WHY it failed",
+    "..."
+  ],
+  "patterns": [
+    "Specific pattern identified (e.g. posts about X get 3x more saves than posts about Y)",
+    "..."
+  ],
+  "recommendations": [
+    "Concrete recommendation based on data (e.g. Double down on topic X, avoid format Y)",
+    "..."
+  ],
+  "content_ideas": [
+    "Specific content idea inspired by what worked",
+    "..."
+  ]
+}
+
+Include at least 3 items in each array. Be specific and actionable.
+Return ONLY the JSON object.`;
+
+  const text = await callAI(prompt);
+  try {
+    const result = JSON.parse(text);
+    return result;
+  } catch {
+    throw new Error('AI returned invalid JSON for analysis. Please try again.');
+  }
+}
+
+// ---- Generate Weekly Plan ----
+
+export async function generateWeeklyPlan(params: {
+  projectName: string;
+  knowledgeBase?: string;
+  automations: Array<{ id: string; name: string; niche: string }>;
+  insights?: string;
+  weekDays?: Array<'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun'>;
+}): Promise<ContentPlanItem[]> {
+  const { projectName, knowledgeBase, automations, insights, weekDays = ['mon', 'wed', 'fri'] } = params;
+
+  const dayLabels: Record<string, string> = {
+    mon: 'Monday', tue: 'Tuesday', wed: 'Wednesday',
+    thu: 'Thursday', fri: 'Friday', sat: 'Saturday', sun: 'Sunday',
+  };
+
+  const automationList = automations.map((a) => `- id: ${a.id} | name: ${a.name} | niche: ${a.niche}`).join('\n');
+
+  const prompt = `You are a social media content strategist.
+
+Create a weekly content plan for "${projectName}" for ${weekDays.length} posting days.
+
+${knowledgeBase ? `Brand DNA:\n${knowledgeBase}\n` : ''}
+${insights ? `Content performance insights:\n${insights}\n` : ''}
+
+Available automations (content systems):
+${automationList}
+
+Posting days: ${weekDays.map((d) => dayLabels[d]).join(', ')}
+
+For each day, suggest a content topic and a hook idea, and assign the most relevant automation.
+
+Return a JSON array with this exact structure:
+[
+  {
+    "day": "mon",
+    "topic": "Clear topic for this day's post",
+    "hook_suggestion": "An attention-grabbing hook for the first slide",
+    "automation_id": "the automation id that best fits this topic",
+    "status": "planned"
+  }
+]
+
+Return ONLY the JSON array. Include exactly ${weekDays.length} items, one per posting day.`;
+
+  const text = await callAI(prompt);
+  try {
+    const result: ContentPlanItem[] = JSON.parse(text);
+    return result;
+  } catch {
+    throw new Error('AI returned invalid JSON for weekly plan. Please try again.');
   }
 }

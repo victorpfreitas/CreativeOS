@@ -2,10 +2,24 @@
 // Made by Human — Core Types
 // ============================================================
 
+export interface BrandDNA {
+  bio: string;
+  bio_link: string;
+  market: string;
+  content_pillars: string;
+  target_audience: string;
+  tone_of_voice: string;
+  key_messages: string;
+  brand_colors: string;
+  visual_references: string;
+  competitors: string;
+}
+
 export interface Project {
   id: string;
   name: string;
   knowledge_base: string;
+  brand_dna?: BrandDNA;
   created_at: string;
 }
 
@@ -77,6 +91,38 @@ export interface CollectionImage {
   created_at: string;
 }
 
+export interface ContentAnalysis {
+  id: string;
+  project_id: string;
+  raw_data: string;
+  insights: {
+    summary: string;
+    best_performers: string[];
+    worst_performers: string[];
+    patterns: string[];
+    recommendations: string[];
+    content_ideas: string[];
+  };
+  created_at: string;
+}
+
+export interface ContentPlanItem {
+  day: 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
+  topic: string;
+  hook_suggestion: string;
+  automation_id?: string;
+  slideshow_id?: string;
+  status: 'planned' | 'generated' | 'published';
+}
+
+export interface ContentPlan {
+  id: string;
+  project_id: string;
+  week_start: string;
+  items: ContentPlanItem[];
+  created_at: string;
+}
+
 // ============================================================
 // Form types (for creating/updating)
 // ============================================================
@@ -84,6 +130,7 @@ export interface CollectionImage {
 export interface CreateProjectInput {
   name: string;
   knowledge_base: string;
+  brand_dna?: BrandDNA;
 }
 
 export interface CreateAutomationInput {

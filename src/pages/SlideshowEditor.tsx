@@ -212,7 +212,7 @@ export default function SlideshowEditor() {
         {slides.map((s, i) => (
           <div 
             key={i} 
-            ref={el => slideRefs.current[i] = el}
+            ref={el => { slideRefs.current[i] = el; }}
             style={{ 
               width: '1080px', 
               height: '1920px', 

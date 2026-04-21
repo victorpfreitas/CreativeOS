@@ -2,13 +2,11 @@
 // Made by Human — Database Operations (Firebase Firestore)
 // ============================================================
 
-import { db, storage } from './firebase';
+import { db } from './firebase';
 import {
   collection, doc, getDocs, getDoc, addDoc, updateDoc, deleteDoc,
   query, orderBy, where, Timestamp,
 } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-
 // Sort helper — avoids composite index requirement for compound queries
 function sortByCreatedAt<T extends { created_at?: string }>(arr: T[]): T[] {
   return arr.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
@@ -262,11 +260,23 @@ export async function removeImageFromCollection(id: string): Promise<void> {
 }
 
 export async function uploadImageToStorage(file: File): Promise<string> {
-  const ext = file.name.split('.').pop();
-  const filename = `${Date.now()}_${Math.random().toString(36).substring(2)}.${ext}`;
-  const storageRef = ref(storage, `uploads/${filename}`);
-  await uploadBytes(storageRef, file);
-  return await getDownloadURL(storageRef);
+  const apiKey = import.meta.env.VITE_IMGBB_API_KEY;
+  if (!apiKey) throw new Error("A chave da API do ImgBB não está configurada no Vercel (VITE_IMGBB_API_KEY).");
+
+  const formData = new FormData();
+  formData.append('image', file);
+
+  const response = await fetch(`https://api.imgbb.com/1/upload?key=${apiKey}`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  const data = await response.json();
+  if (!data.success) {
+    throw new Error(data.error?.message || "Falha ao fazer upload da imagem.");
+  }
+
+  return data.data.url; // ImgBB returns the direct image URL here
 }
 
 // ---- Dashboard Stats ----

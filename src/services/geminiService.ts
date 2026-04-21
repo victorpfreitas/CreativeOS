@@ -49,8 +49,8 @@ async function callAI(prompt: string): Promise<string> {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemma-2-9b-it:free', // Using a reliable free model
-        messages: [{ role: 'user', content: prompt + '\n\nIMPORTANT: Return ONLY valid JSON, nothing else.' }]
+        model: 'minimax/minimax-m2.5:free', // Using the free model you verified
+        messages: [{ role: 'user', content: prompt + '\n\nIMPORTANT: Return ONLY valid JSON, nothing else. DO NOT use markdown code blocks like ```json. Just raw json.' }]
       })
     });
 

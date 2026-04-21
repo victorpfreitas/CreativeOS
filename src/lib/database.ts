@@ -7,6 +7,11 @@ import {
   collection, doc, getDocs, getDoc, addDoc, updateDoc, deleteDoc,
   query, orderBy, where, Timestamp,
 } from 'firebase/firestore';
+
+// Sort helper — avoids composite index requirement for compound queries
+function sortByCreatedAt<T extends { created_at?: string }>(arr: T[]): T[] {
+  return arr.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+}
 import type {
   Project, Automation, Hook, Slideshow,
   ImageCollection, CollectionImage,
@@ -65,9 +70,9 @@ export async function getAutomations(): Promise<Automation[]> {
 }
 
 export async function getAutomationsByProject(projectId: string): Promise<Automation[]> {
-  const q = query(collection(db, 'automations'), where('project_id', '==', projectId), orderBy('created_at', 'desc'));
+  const q = query(collection(db, 'automations'), where('project_id', '==', projectId));
   const snap = await getDocs(q);
-  const automations = snap.docs.map((d) => docToObj<Automation>(d));
+  const automations = sortByCreatedAt(snap.docs.map((d) => docToObj<Automation>(d)));
   for (const auto of automations) {
     if (auto.project_id) auto.project = (await getProject(auto.project_id)) || undefined;
   }
@@ -102,9 +107,9 @@ export async function deleteAutomation(id: string): Promise<void> {
 // ---- Hooks ----
 
 export async function getHooksByAutomation(automationId: string): Promise<Hook[]> {
-  const q = query(collection(db, 'hooks'), where('automation_id', '==', automationId), orderBy('created_at', 'desc'));
+  const q = query(collection(db, 'hooks'), where('automation_id', '==', automationId));
   const snap = await getDocs(q);
-  return snap.docs.map((d) => docToObj<Hook>(d));
+  return sortByCreatedAt(snap.docs.map((d) => docToObj<Hook>(d)));
 }
 
 export async function createHooks(hooks: { automation_id: string; text: string }[]): Promise<Hook[]> {
@@ -146,9 +151,9 @@ export async function getSlideshows(): Promise<Slideshow[]> {
 }
 
 export async function getSlideshowsByAutomation(automationId: string): Promise<Slideshow[]> {
-  const q = query(collection(db, 'slideshows'), where('automation_id', '==', automationId), orderBy('created_at', 'desc'));
+  const q = query(collection(db, 'slideshows'), where('automation_id', '==', automationId));
   const snap = await getDocs(q);
-  const slideshows = snap.docs.map((d) => docToObj<Slideshow>(d));
+  const slideshows = sortByCreatedAt(snap.docs.map((d) => docToObj<Slideshow>(d)));
   for (const show of slideshows) {
     if (show.hook_id) {
       const hookSnap = await getDoc(doc(db, 'hooks', show.hook_id));

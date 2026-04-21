@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, ArrowRight, Save, Loader2, Type, Image as ImageIcon, Download, Copy, Check } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Save, Loader2, Type, Image as ImageIcon, Download, Copy, Check, Palette } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
 import type { Slideshow, Slide, ImageCollection } from '../lib/types';
 import * as db from '../lib/database';
@@ -12,6 +12,9 @@ export default function SlideshowEditor() {
   const [slideshow, setSlideshow] = useState<Slideshow | null>(null);
   const [slides, setSlides] = useState<Slide[]>([]);
   const [caption, setCaption] = useState('');
+  const [theme, setTheme] = useState<'dark' | 'light' | 'vibrant'>('dark');
+  const [watermark, setWatermark] = useState('');
+  
   const [currentSlide, setCurrentSlide] = useState(0);
   const [editingText, setEditingText] = useState(false);
   
@@ -41,7 +44,8 @@ export default function SlideshowEditor() {
         setSlideshow(data);
         setSlides(data.slides || []);
         setCaption(data.caption || '');
-        // Initialize refs array
+        setTheme(data.theme || 'dark');
+        setWatermark(data.watermark || '');
         slideRefs.current = new Array(data.slides?.length || 0).fill(null);
       }
     } catch (err) { console.error(err); }
@@ -51,7 +55,7 @@ export default function SlideshowEditor() {
   async function handleSave() {
     if (!slideshow) return;
     setSaving(true);
-    try { await db.updateSlideshow(slideshow.id, { slides, caption }); }
+    try { await db.updateSlideshow(slideshow.id, { slides, caption, theme, watermark }); }
     catch (err) { console.error(err); }
     finally { setSaving(false); }
   }
@@ -77,16 +81,14 @@ export default function SlideshowEditor() {
     try {
       const zip = new JSZip();
       
-      // We will render all slides off-screen, but wait, they are in the DOM now via a hidden container
       for (let i = 0; i < slides.length; i++) {
         const node = slideRefs.current[i];
         if (node) {
           const dataUrl = await toPng(node, {
             quality: 1,
             width: 1080,
-            height: 1920, // Or 1350 for IG Portrait. Using 1920 to fit TikTok/Reels/Stories as per original aspect ratio
+            height: 1920,
           });
-          // Remove data:image/png;base64,
           const base64Data = dataUrl.replace(/^data:image\/png;base64,/, "");
           zip.file(`slide_${i + 1}.png`, base64Data, { base64: true });
         }
@@ -114,14 +116,38 @@ export default function SlideshowEditor() {
 
   const slide = slides[currentSlide];
 
+  // Theme Styles config
+  const themeStyles = {
+    dark: {
+      gradient: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4338ca 100%)',
+      overlay: 'rgba(0,0,0,0.5)',
+      textColor: 'white',
+      textShadow: '0 4px 24px rgba(0,0,0,0.6)'
+    },
+    light: {
+      gradient: 'linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)',
+      overlay: 'rgba(255,255,255,0.75)',
+      textColor: '#0f172a',
+      textShadow: 'none'
+    },
+    vibrant: {
+      gradient: 'linear-gradient(135deg, #ec4899 0%, #8b5cf6 50%, #3b82f6 100%)',
+      overlay: 'rgba(0,0,0,0.2)',
+      textColor: 'white',
+      textShadow: '0 4px 20px rgba(236,72,153,0.8)'
+    }
+  };
+
+  const currentTheme = themeStyles[theme];
+
   return (
     <div className="space-y-6">
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
-          <Link to={`/automations/${slideshow.automation_id}`} className="p-2 hover:bg-slate-200 rounded-full transition-colors text-slate-500"><ArrowLeft className="w-5 h-5" /></Link>
+          <Link to={slideshow.automation_id ? `/automations/${slideshow.automation_id}` : "/"} className="p-2 hover:bg-slate-200 rounded-full transition-colors text-slate-500"><ArrowLeft className="w-5 h-5" /></Link>
           <div>
             <h1 className="text-xl font-bold text-slate-900">Slideshow Editor</h1>
-            <p className="text-sm text-slate-500 truncate max-w-md">{slideshow.hook?.text || 'Untitled'}</p>
+            <p className="text-sm text-slate-500 truncate max-w-md">{slideshow.hook?.text || 'Standalone Carousel'}</p>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -139,22 +165,31 @@ export default function SlideshowEditor() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* TikTok Preview Area */}
         <div className="flex flex-col items-center">
-          <div className="relative w-[320px] h-[568px] rounded-2xl overflow-hidden shadow-2xl border-4 border-slate-900 group" style={{ background: slide.image_url ? `url(${slide.image_url}) center/cover` : 'linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4338ca 100%)' }}>
-            <div className="absolute inset-0 bg-black/40" />
+          <div className="relative w-[320px] h-[568px] rounded-2xl overflow-hidden shadow-2xl border-4 border-slate-900 group" style={{ background: slide.image_url ? `url(${slide.image_url}) center/cover` : currentTheme.gradient }}>
+            <div className="absolute inset-0" style={{ backgroundColor: currentTheme.overlay }} />
+            
+            {/* Watermark Top */}
+            {watermark && (
+              <div className="absolute top-6 left-0 right-0 text-center z-10">
+                <span className="text-sm font-bold tracking-widest opacity-80" style={{ color: currentTheme.textColor }}>{watermark}</span>
+              </div>
+            )}
+
             <div className="absolute inset-0 flex items-center justify-center p-8">
               <div className="text-center">
-                {slide.type === 'hook' && <div className="text-xs font-bold text-indigo-300 uppercase tracking-wider mb-3 drop-shadow-md">Hook</div>}
-                <p className="text-white text-xl font-bold leading-relaxed drop-shadow-lg whitespace-pre-line">{slide.text}</p>
+                {slide.type === 'hook' && <div className="text-xs font-bold uppercase tracking-wider mb-3 opacity-90" style={{ color: theme === 'light' ? '#4f46e5' : '#c7d2fe' }}>Hook</div>}
+                <p className="text-xl font-bold leading-relaxed whitespace-pre-line" style={{ color: currentTheme.textColor, textShadow: currentTheme.textShadow }}>{slide.text}</p>
               </div>
             </div>
-            <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-1.5">
-              {slides.map((_, i) => <button key={i} onClick={() => setCurrentSlide(i)} className={`w-2 h-2 rounded-full transition-colors ${i === currentSlide ? 'bg-white' : 'bg-white/40'}`} />)}
+            
+            <div className="absolute bottom-6 left-0 right-0 flex justify-center gap-1.5 z-10">
+              {slides.map((_, i) => <button key={i} onClick={() => setCurrentSlide(i)} className={`w-2 h-2 rounded-full transition-colors ${i === currentSlide ? 'bg-indigo-500' : 'bg-indigo-500/30'}`} />)}
             </div>
 
             {/* Overlay to swap image */}
-            <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
-              <button onClick={() => setBgModalOpen(true)} className="bg-black/60 hover:bg-black/80 text-white px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 backdrop-blur-sm">
-                <ImageIcon className="w-3.5 h-3.5" /> Swap Background
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity z-20">
+              <button onClick={() => setBgModalOpen(true)} className="bg-black/80 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 backdrop-blur-sm shadow-xl hover:scale-105 transition-transform">
+                <ImageIcon className="w-4 h-4" /> Swap Background
               </button>
             </div>
           </div>
@@ -168,6 +203,24 @@ export default function SlideshowEditor() {
 
         {/* Edit Panel */}
         <div className="space-y-4">
+          <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-4">
+            <h3 className="font-semibold text-slate-900 flex items-center gap-2"><Palette className="w-4 h-4 text-indigo-500" /> Branding & Style</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-slate-700">Theme</label>
+                <select value={theme} onChange={e => setTheme(e.target.value as any)} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+                  <option value="dark">Dark Premium</option>
+                  <option value="light">Light Clean</option>
+                  <option value="vibrant">Neon Vibrant</option>
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-slate-700">Watermark / @arroba</label>
+                <input value={watermark} onChange={e => setWatermark(e.target.value)} placeholder="@madebyhuman" className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm" />
+              </div>
+            </div>
+          </div>
+
           <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="font-semibold text-slate-900 flex items-center gap-2"><Type className="w-4 h-4 text-indigo-500" />Slide {currentSlide + 1} <span className="text-xs text-slate-400">({slide.type})</span></h3>
@@ -178,7 +231,7 @@ export default function SlideshowEditor() {
           
           <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-3">
             <h3 className="font-semibold text-slate-900">All Slides</h3>
-            <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2">
+            <div className="space-y-2 max-h-[200px] overflow-y-auto pr-2">
               {slides.map((s, i) => (
                 <button key={i} onClick={() => setCurrentSlide(i)} className={`w-full text-left p-3 rounded-lg border transition-colors ${i === currentSlide ? 'border-indigo-300 bg-indigo-50' : 'border-slate-200 hover:bg-slate-50'}`}>
                   <div className="flex items-center gap-3">
@@ -202,7 +255,7 @@ export default function SlideshowEditor() {
                 {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />} {copied ? 'Copied' : 'Copy'}
               </button>
             </div>
-            <textarea value={caption} onChange={(e) => setCaption(e.target.value)} rows={4} placeholder="TikTok/Instagram caption..." className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm" />
+            <textarea value={caption} onChange={(e) => setCaption(e.target.value)} rows={3} placeholder="TikTok/Instagram caption..." className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm" />
           </div>
         </div>
       </div>
@@ -216,19 +269,26 @@ export default function SlideshowEditor() {
             style={{ 
               width: '1080px', 
               height: '1920px', 
-              background: s.image_url ? `url(${s.image_url}) center/cover` : 'linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4338ca 100%)',
+              background: s.image_url ? `url(${s.image_url}) center/cover` : currentTheme.gradient,
               position: 'relative'
             }}
           >
-            <div style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(0,0,0,0.4)' }} />
+            <div style={{ position: 'absolute', inset: 0, backgroundColor: currentTheme.overlay }} />
+            
+            {watermark && (
+              <div style={{ position: 'absolute', top: '80px', left: 0, right: 0, textAlign: 'center', zIndex: 10 }}>
+                <span style={{ fontSize: '36px', fontWeight: 'bold', letterSpacing: '8px', color: currentTheme.textColor, opacity: 0.8 }}>{watermark}</span>
+              </div>
+            )}
+
             <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '120px' }}>
               <div style={{ textAlign: 'center' }}>
                 <p style={{ 
-                  color: 'white', 
+                  color: currentTheme.textColor, 
                   fontSize: '72px', 
                   fontWeight: 'bold', 
                   lineHeight: '1.4', 
-                  textShadow: '0 4px 24px rgba(0,0,0,0.5)',
+                  textShadow: currentTheme.textShadow,
                   whiteSpace: 'pre-line' 
                 }}>
                   {s.text}

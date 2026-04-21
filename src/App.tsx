@@ -9,13 +9,20 @@ import SlideshowEditor from './pages/SlideshowEditor';
 import Collections from './pages/Collections';
 import Gallery from './pages/Gallery';
 import Schedule from './pages/Schedule';
+import Login from './pages/Login';
+import ProtectedRoute from './components/layout/ProtectedRoute';
+import { AuthProvider } from './lib/AuthContext';
 
 function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<AppLayout />}>
-          <Route index element={<Dashboard />} />
+    <AuthProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          
+          <Route element={<ProtectedRoute />}>
+            <Route path="/" element={<AppLayout />}>
+              <Route index element={<Dashboard />} />
           <Route path="projects" element={<Projects />} />
           <Route path="automations" element={<Automations />} />
           <Route path="automations/new" element={<NewAutomation />} />
@@ -23,10 +30,12 @@ function App() {
           <Route path="editor/:id" element={<SlideshowEditor />} />
           <Route path="collections" element={<Collections />} />
           <Route path="gallery" element={<Gallery />} />
-          <Route path="schedule" element={<Schedule />} />
-        </Route>
-      </Routes>
-    </BrowserRouter>
+              <Route path="schedule" element={<Schedule />} />
+            </Route>
+          </Route>
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
   );
 }
 

@@ -46,12 +46,14 @@ export interface Slide {
 
 export interface Slideshow {
   id: string;
-  automation_id: string;
-  hook_id: string;
+  automation_id?: string;
+  hook_id?: string;
   status: 'draft' | 'scheduled' | 'published';
   scheduled_for: string | null;
   slides: Slide[];
   caption: string;
+  theme?: 'dark' | 'light' | 'vibrant';
+  watermark?: string;
   created_at: string;
   // Joined fields
   automation?: Automation;

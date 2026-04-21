@@ -178,11 +178,13 @@ export async function getSlideshow(id: string): Promise<Slideshow | null> {
 }
 
 export async function createSlideshow(input: {
-  automation_id: string;
-  hook_id: string;
+  automation_id?: string;
+  hook_id?: string;
   slides: Slide[];
   caption: string;
   status?: string;
+  theme?: 'dark' | 'light' | 'vibrant';
+  watermark?: string;
   scheduled_for?: string | null;
 }): Promise<Slideshow> {
   const data = { ...input, status: input.status || 'draft', created_at: Timestamp.now().toDate().toISOString() };
@@ -194,6 +196,8 @@ export async function updateSlideshow(id: string, input: Partial<{
   slides: Slide[];
   caption: string;
   status: string;
+  theme: 'dark' | 'light' | 'vibrant';
+  watermark: string;
   scheduled_for: string | null;
 }>): Promise<Slideshow> {
   const ref = doc(db, 'slideshows', id);

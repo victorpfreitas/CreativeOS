@@ -124,6 +124,8 @@ export default function SlideshowEditor() {
   if (loading) return <div className="flex items-center justify-center h-96"><Loader2 className="w-8 h-8 animate-spin text-indigo-500" /></div>;
   if (!slideshow || slides.length === 0) return <div className="text-center py-12"><p className="text-slate-500">Slideshow not found.</p><Link to="/gallery" className="text-indigo-600 hover:underline mt-2 inline-block">Back to Gallery</Link></div>;
 
+  const slide = slides[currentSlide];
+
   // Theme Styles config
   const themeStyles = {
     dark: {

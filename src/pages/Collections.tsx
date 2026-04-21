@@ -3,6 +3,7 @@ import { Plus, Images, Search, Loader2, Check, Upload } from 'lucide-react';
 import Modal from '../components/ui/Modal';
 import type { ImageCollection } from '../lib/types';
 import * as db from '../lib/database';
+import { uploadImageToStorage } from '../services/uploadService';
 import { searchImages, type PexelsPhoto } from '../services/pexelsService';
 
 export default function Collections() {
@@ -78,7 +79,7 @@ export default function Collections() {
     try {
       const uploads = [];
       for (let i = 0; i < files.length; i++) {
-        const url = await db.uploadImageToStorage(files[i]);
+        const url = await uploadImageToStorage(files[i]);
         uploads.push({ collection_id: collectionId, url, source: 'upload' });
       }
       await db.addImagesToCollection(uploads);

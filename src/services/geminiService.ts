@@ -2,73 +2,20 @@
 // Made by Human — Gemini AI Service
 // ============================================================
 
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || '';
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
-
-
-const OPENROUTER_API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY || '';
-
 async function callAI(prompt: string): Promise<string> {
-  // First try Gemini
-  try {
-    const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
-          temperature: 0.8,
-          maxOutputTokens: 4096,
-          responseMimeType: 'application/json',
-        },
-      }),
-    });
+  const response = await fetch('/api/ai', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt }),
+  });
 
-    if (!response.ok) {
-      const err = await response.text();
-      throw new Error(`Gemini API error: ${response.status} - ${err}`);
-    }
-
-    const data = await response.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text) throw new Error('Empty response from Gemini');
-    
-    return text;
-  } catch (err: any) {
-    console.warn('Gemini failed, trying OpenRouter fallback...', err.message);
-    
-    // Fallback to OpenRouter
-    if (!OPENROUTER_API_KEY) {
-      throw new Error('Gemini failed and no OpenRouter API key found.');
-    }
-
-    const openRouterResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'minimax/minimax-m2.5:free', // Using the free model you verified
-        messages: [{ role: 'user', content: prompt + '\n\nIMPORTANT: Return ONLY valid JSON, nothing else. DO NOT use markdown code blocks like ```json. Just raw json.' }]
-      })
-    });
-
-    if (!openRouterResponse.ok) {
-      const orErr = await openRouterResponse.text();
-      throw new Error(`OpenRouter API error: ${openRouterResponse.status} - ${orErr}`);
-    }
-
-    const orData = await openRouterResponse.json();
-    let orText = orData.choices?.[0]?.message?.content;
-    
-    if (!orText) throw new Error('Empty response from OpenRouter');
-
-    // Clean up markdown code blocks if the model wrapped the JSON
-    orText = orText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    
-    return orText;
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ error: 'Unknown error' }));
+    throw new Error(err.error || `AI API error: ${response.status}`);
   }
+
+  const data = await response.json();
+  return data.text;
 }
 
 // ---- Generate Hooks ----
@@ -98,8 +45,12 @@ Return a JSON array of strings. Example:
 Return ONLY the JSON array, no other text.`;
 
   const text = await callAI(prompt);
-  const hooks: string[] = JSON.parse(text);
-  return hooks;
+  try {
+    const hooks: string[] = JSON.parse(text);
+    return hooks;
+  } catch {
+    throw new Error('AI returned invalid JSON for hooks. Please try again.');
+  }
 }
 
 // ---- Generate Slideshow ----
@@ -157,6 +108,10 @@ Return a JSON object with this exact structure:
 Return ONLY the JSON object.`;
 
   const text = await callAI(prompt);
-  const result = JSON.parse(text);
-  return result;
+  try {
+    const result = JSON.parse(text);
+    return result;
+  } catch {
+    throw new Error('AI returned invalid JSON for slideshow. Please try again.');
+  }
 }

@@ -52,7 +52,7 @@ export default function NewAutomation() {
         soft_cta: softCta,
         schedule_days: scheduleDays,
         schedule_time: scheduleTime,
-        schedule_timezone: 'America/Sao_Paulo',
+        schedule_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         hook_collection_id: hookCollectionId || null,
         body_collection_id: bodyCollectionId || null,
       });
@@ -68,10 +68,13 @@ export default function NewAutomation() {
         await db.createHooks(hookTexts.map((text) => ({ automation_id: automation.id, text })));
       } catch (aiErr) {
         console.error('Hook generation failed:', aiErr);
+        alert('Automação criada! Mas a geração automática de hooks falhou — você pode gerá-los manualmente na página da automação.');
       }
+
       navigate(`/automations/${automation.id}`);
     } catch (err) {
       console.error('Error creating automation:', err);
+      alert('Erro ao criar automação. Tente novamente.');
     } finally {
       setSaving(false);
     }

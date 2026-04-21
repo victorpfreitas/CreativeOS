@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, Save, Loader2, Type, Image as ImageIcon, Download, Copy, Check, Palette } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
 import type { Slideshow, Slide, ImageCollection } from '../lib/types';
+import { themeStyles, type ThemeKey } from '../lib/themes';
 import * as db from '../lib/database';
 import Modal from '../components/ui/Modal';
 import { toPng } from 'html-to-image';
@@ -12,7 +13,7 @@ export default function SlideshowEditor() {
   const [slideshow, setSlideshow] = useState<Slideshow | null>(null);
   const [slides, setSlides] = useState<Slide[]>([]);
   const [caption, setCaption] = useState('');
-  const [theme, setTheme] = useState<'dark' | 'light' | 'vibrant'>('dark');
+  const [theme, setTheme] = useState<ThemeKey>('dark');
   const [watermark, setWatermark] = useState('');
   
   const [currentSlide, setCurrentSlide] = useState(0);
@@ -125,31 +126,6 @@ export default function SlideshowEditor() {
   if (!slideshow || slides.length === 0) return <div className="text-center py-12"><p className="text-slate-500">Slideshow not found.</p><Link to="/gallery" className="text-indigo-600 hover:underline mt-2 inline-block">Back to Gallery</Link></div>;
 
   const slide = slides[currentSlide];
-
-  // Theme Styles config
-  const themeStyles = {
-    dark: {
-      gradient: 'linear-gradient(135deg, #0f172a 0%, #020617 100%)',
-      overlay: 'rgba(0,0,0,0.6)',
-      textColor: 'white',
-      fontFamily: "'Playfair Display', serif",
-      textShadow: '0 4px 30px rgba(0,0,0,0.8)'
-    },
-    light: {
-      gradient: 'linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)',
-      overlay: 'rgba(255,255,255,0.85)',
-      textColor: '#0f172a',
-      fontFamily: "'Space Grotesk', sans-serif",
-      textShadow: 'none'
-    },
-    vibrant: {
-      gradient: 'linear-gradient(135deg, #ec4899 0%, #8b5cf6 50%, #3b82f6 100%)',
-      overlay: 'rgba(0,0,0,0.3)',
-      textColor: 'white',
-      fontFamily: "'Outfit', sans-serif",
-      textShadow: '0 4px 20px rgba(236,72,153,0.8)'
-    }
-  };
 
   const currentTheme = themeStyles[theme];
 

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Images, Search, Loader2, Trash2, Check } from 'lucide-react';
+import { Plus, Images, Search, Loader2, Check } from 'lucide-react';
 import Modal from '../components/ui/Modal';
 import type { ImageCollection } from '../lib/types';
 import * as db from '../lib/database';

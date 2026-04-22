@@ -37,6 +37,15 @@ export default function SlideshowEditor() {
 
   const slideRefs = useRef<(HTMLDivElement | null)[]>([]);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Auto-resize textarea to ensure vertical centering works
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px';
+    }
+  }, [slides, currentSlide]);
 
   useEffect(() => {
     if (id) {
@@ -369,6 +378,7 @@ export default function SlideshowEditor() {
               <div className="w-full text-center group/text relative flex flex-col items-center justify-center min-h-[50%]">
                 {/* Direct Editing Overlay */}
                 <textarea
+                  ref={textareaRef}
                   value={slide.text}
                   onChange={(e) => updateSlideText(currentSlide, e.target.value)}
                   className="w-full bg-transparent border-none focus:ring-0 text-center p-0 resize-none overflow-hidden cursor-text placeholder:text-white/20 break-words flex items-center justify-center"
@@ -379,10 +389,8 @@ export default function SlideshowEditor() {
                     fontSize: getDynamicFontSize(slide.text, slide.type),
                     fontWeight: 'bold',
                     lineHeight: '1.2',
-                    height: 'auto',
                     minHeight: '1em'
                   }}
-                  rows={8}
                   placeholder="Clique para escrever..."
                 />
               </div>

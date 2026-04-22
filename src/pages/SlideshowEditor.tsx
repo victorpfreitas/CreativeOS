@@ -134,19 +134,43 @@ export default function SlideshowEditor() {
   }
 
   function getDynamicFontSize(text: string, type: 'hook' | 'body', isExport = false) {
+    const lines = text.split('\n').length;
     const length = text.length;
+    
     if (isExport) {
-      let baseSize = type === 'hook' ? 86 : 70;
-      if (length > 120) baseSize *= 0.6;
-      else if (length > 80) baseSize *= 0.75;
-      else if (length > 50) baseSize *= 0.9;
-      return `${baseSize}px`;
+      let baseSize = type === 'hook' ? 95 : 72;
+      
+      // Granular scaling based on length
+      if (length > 400) baseSize *= 0.35;
+      else if (length > 300) baseSize *= 0.45;
+      else if (length > 200) baseSize *= 0.55;
+      else if (length > 150) baseSize *= 0.65;
+      else if (length > 100) baseSize *= 0.75;
+      else if (length > 60) baseSize *= 0.85;
+      
+      // Granular scaling based on lines
+      if (lines > 12) baseSize *= 0.4;
+      else if (lines > 9) baseSize *= 0.55;
+      else if (lines > 6) baseSize *= 0.7;
+      else if (lines > 4) baseSize *= 0.85;
+      
+      return `${Math.max(baseSize, 22)}px`;
     } else {
-      let baseSize = type === 'hook' ? 2.5 : 1.8;
-      if (length > 120) baseSize *= 0.6;
-      else if (length > 80) baseSize *= 0.75;
-      else if (length > 50) baseSize *= 0.9;
-      return `${baseSize}rem`;
+      let baseSize = type === 'hook' ? 2.8 : 2.0;
+      
+      if (length > 400) baseSize *= 0.35;
+      else if (length > 300) baseSize *= 0.45;
+      else if (length > 200) baseSize *= 0.55;
+      else if (length > 150) baseSize *= 0.65;
+      else if (length > 100) baseSize *= 0.75;
+      else if (length > 60) baseSize *= 0.85;
+      
+      if (lines > 12) baseSize *= 0.4;
+      else if (lines > 9) baseSize *= 0.55;
+      else if (lines > 6) baseSize *= 0.7;
+      else if (lines > 4) baseSize *= 0.85;
+      
+      return `${Math.max(baseSize, 0.7)}rem`;
     }
   }
 
@@ -341,13 +365,13 @@ export default function SlideshowEditor() {
               </div>
             )}
 
-            <div className="absolute inset-0 flex items-center justify-center p-12">
+            <div className="absolute inset-0 flex items-center justify-center p-16">
               <div className="w-full text-center group/text relative">
                 {/* Direct Editing Overlay */}
                 <textarea
                   value={slide.text}
                   onChange={(e) => updateSlideText(currentSlide, e.target.value)}
-                  className="w-full bg-transparent border-none focus:ring-0 text-center p-0 resize-none overflow-hidden cursor-text placeholder:text-white/20"
+                  className="w-full bg-transparent border-none focus:ring-0 text-center p-0 resize-none overflow-hidden cursor-text placeholder:text-white/20 break-words"
                   style={{ 
                     color: currentTheme.textColor, 
                     textShadow: currentTheme.textShadow, 
@@ -356,7 +380,7 @@ export default function SlideshowEditor() {
                     fontWeight: 'bold',
                     lineHeight: '1.2'
                   }}
-                  rows={4}
+                  rows={10}
                   placeholder="Clique para escrever..."
                 />
               </div>
@@ -495,7 +519,7 @@ export default function SlideshowEditor() {
               </div>
             )}
 
-            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '100px' }}>
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '140px' }}>
               <div style={{ textAlign: 'center', width: '100%' }}>
                 {logoUrl && (
                   <div style={{ position: 'absolute', top: '80px', right: '80px', zIndex: 10 }}>
@@ -508,7 +532,8 @@ export default function SlideshowEditor() {
                   fontWeight: 'bold',
                   lineHeight: '1.2',
                   textShadow: currentTheme.textShadow,
-                  whiteSpace: 'pre-line',
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
                   fontFamily: s.type === 'hook' ? currentTheme.hookFont : currentTheme.bodyFont,
                 }}>
                   {s.text}

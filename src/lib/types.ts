@@ -66,8 +66,9 @@ export interface Slideshow {
   scheduled_for: string | null;
   slides: Slide[];
   caption: string;
-  theme?: 'dark' | 'light' | 'vibrant';
+  theme?: 'dark' | 'light' | 'vibrant' | 'minimal' | 'bold_gradient';
   watermark?: string;
+  logo_url?: string;
   created_at: string;
   // Joined fields
   automation?: Automation;

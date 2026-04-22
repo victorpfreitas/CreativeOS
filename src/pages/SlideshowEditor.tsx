@@ -19,6 +19,7 @@ export default function SlideshowEditor() {
   const [caption, setCaption] = useState('');
   const [theme, setTheme] = useState<ThemeKey>('dark');
   const [watermark, setWatermark] = useState('');
+  const [logoUrl, setLogoUrl] = useState('');
 
   const [currentSlide, setCurrentSlide] = useState(0);
 
@@ -51,6 +52,7 @@ export default function SlideshowEditor() {
         setCaption(data.caption || '');
         setTheme(data.theme || 'dark');
         setWatermark(data.watermark || '');
+        setLogoUrl(data.logo_url || '');
         slideRefs.current = new Array(data.slides?.length || 0).fill(null);
       }
     } catch (err) { console.error(err); }
@@ -61,7 +63,7 @@ export default function SlideshowEditor() {
     if (!slideshow) return;
     setSaving(true);
     try {
-      await db.updateSlideshow(slideshow.id, { slides, caption, theme, watermark });
+      await db.updateSlideshow(slideshow.id, { slides, caption, theme, watermark, logo_url: logoUrl });
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (err) { console.error(err); }
@@ -180,262 +182,248 @@ export default function SlideshowEditor() {
   const currentTheme = themeStyles[theme];
 
   return (
-    <div className="space-y-8 pb-12">
-      {/* Header */}
-      <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <Link to={slideshow.automation_id ? `/automations/${slideshow.automation_id}` : '/'} className="p-2 hover:bg-white/10 rounded-full transition-colors text-slate-400">
+    <div className="h-[calc(100vh-120px)] flex flex-col gap-4 overflow-hidden">
+      {/* Header - Compact */}
+      <header className="flex items-center justify-between px-2">
+        <div className="flex items-center gap-3">
+          <Link to={slideshow.automation_id ? `/automations/${slideshow.automation_id}` : '/'} className="p-1.5 hover:bg-white/5 rounded-lg transition-colors text-slate-500">
             <ArrowLeft className="w-5 h-5" />
           </Link>
-          <div>
-            <h1 className="text-2xl font-bold text-white font-space tracking-tight">Studio Editor</h1>
-            <p className="text-sm text-slate-400 truncate max-w-md">{slideshow.hook?.text || 'Carrossel standalone'}</p>
+          <div className="flex items-center gap-2">
+            <span className="bg-indigo-500/10 text-indigo-400 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">Studio Pro</span>
+            <h1 className="text-lg font-bold text-white truncate max-w-[200px]">{slideshow.automation?.name || 'Carousel'}</h1>
           </div>
         </div>
+        
         <div className="flex items-center gap-3">
-          <button
-            onClick={handleExport}
-            disabled={exporting}
-            className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 transition-all shadow-[0_0_15px_rgba(16,185,129,0.2)] hover:shadow-[0_0_25px_rgba(16,185,129,0.4)]"
-          >
-            {exporting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
-            {exporting ? 'Exportando...' : 'Download ZIP'}
-          </button>
           <button
             onClick={handleSave}
             disabled={saving}
-            className={`px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 transition-all ${
+            className={`px-4 py-1.5 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${
               saved
-                ? 'bg-emerald-600 text-white shadow-[0_0_15px_rgba(16,185,129,0.3)]'
-                : 'bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white shadow-[0_0_15px_rgba(79,70,229,0.2)] hover:shadow-[0_0_25px_rgba(79,70,229,0.4)]'
+                ? 'bg-emerald-600 text-white'
+                : 'bg-white/5 hover:bg-white/10 text-white border border-white/10'
             }`}
           >
-            {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : saved ? <Check className="w-5 h-5" /> : <Save className="w-5 h-5" />}
-            {saving ? 'Salvando...' : saved ? 'Salvo!' : 'Salvar'}
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : saved ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
+            {saving ? '...' : saved ? 'Salvo' : 'Salvar'}
+          </button>
+          
+          <button
+            onClick={handleExport}
+            disabled={exporting}
+            className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-4 py-1.5 rounded-lg text-sm font-bold flex items-center gap-2 transition-all shadow-lg shadow-indigo-600/20"
+          >
+            {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+            {exporting ? '...' : 'Exportar'}
           </button>
         </div>
       </header>
 
-      {/* Slide counter */}
-      <div className="flex items-center justify-center gap-2">
-        {slides.map((_, i) => (
-          <button
-            key={i}
-            onClick={() => scrollToSlide(i)}
-            className={`transition-all duration-200 rounded-full ${
-              currentSlide === i
-                ? 'w-6 h-2 bg-indigo-400'
-                : 'w-2 h-2 bg-white/20 hover:bg-white/40'
-            }`}
-          />
-        ))}
-        <span className="ml-3 text-xs text-slate-500">
-          {currentSlide + 1} / {slides.length}
-        </span>
-      </div>
-
-      {/* HORIZONTAL CAROUSEL VIEWER */}
-      <div className="relative -mx-8 px-8">
-        <div className="absolute inset-0 bg-gradient-to-r from-[#0a0a0a] via-transparent to-[#0a0a0a] pointer-events-none z-10" />
-        <div
-          ref={scrollContainerRef}
-          className="flex flex-row overflow-x-auto gap-6 pb-8 pt-4 snap-x snap-mandatory items-center relative"
-          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-        >
-          {slides.map((s, i) => {
-            const isSelected = currentSlide === i;
-            return (
-              <div
+      {/* Main Studio Area */}
+      <div className="flex-1 flex overflow-hidden gap-4">
+        
+        {/* Left Sidebar: Filmstrip */}
+        <aside className="w-64 flex flex-col gap-4 overflow-hidden">
+          <div className="flex items-center justify-between px-2">
+            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Slides ({slides.length})</h3>
+            <button onClick={addSlide} className="p-1 hover:bg-white/5 rounded text-indigo-400 hover:text-indigo-300 transition-colors">
+              <Plus className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto pr-2 space-y-3 custom-scrollbar">
+            {slides.map((s, i) => (
+              <div 
                 key={i}
                 onClick={() => scrollToSlide(i)}
-                className={`relative min-w-[300px] lg:min-w-[370px] aspect-[4/5] snap-center shrink-0 rounded-2xl overflow-hidden cursor-pointer transition-all duration-300 ${
-                  isSelected
-                    ? 'ring-4 ring-indigo-500 shadow-2xl shadow-indigo-500/20 scale-100'
-                    : 'opacity-50 hover:opacity-70 scale-95'
+                className={`group relative aspect-[4/5] rounded-xl overflow-hidden cursor-pointer border-2 transition-all ${
+                  currentSlide === i ? 'border-indigo-500 ring-2 ring-indigo-500/20' : 'border-white/5 hover:border-white/20'
                 }`}
-                style={{ background: s.image_url ? `url(${s.image_url}) center/cover` : currentTheme.gradient }}
               >
-                <div className="absolute inset-0" style={{ backgroundColor: currentTheme.overlay }} />
-
-                {watermark && (
-                  <div className="absolute top-6 left-0 right-0 text-center z-10">
-                    <span className="text-xs font-bold tracking-widest opacity-60" style={{ color: currentTheme.textColor }}>{watermark}</span>
-                  </div>
-                )}
-
-                <div className="absolute inset-0 flex items-center justify-center p-8">
-                  <div className="text-center w-full">
-                    {s.type === 'hook' && (
-                      <div className="text-[10px] font-bold uppercase tracking-widest mb-4 opacity-80" style={{ color: theme === 'light' ? '#4f46e5' : '#818cf8' }}>
-                        Slide 1 • Hook
-                      </div>
-                    )}
-                    <p
-                      className="text-2xl lg:text-3xl font-bold leading-tight whitespace-pre-line"
-                      style={{ color: currentTheme.textColor, textShadow: currentTheme.textShadow, fontFamily: currentTheme.fontFamily }}
-                    >
-                      {s.text}
-                    </p>
-                  </div>
+                <div className="absolute inset-0" style={{ background: s.image_url ? `url(${s.image_url}) center/cover` : currentTheme.gradient }} />
+                <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors" />
+                
+                {/* Mini Preview Text */}
+                <div className="absolute inset-0 flex items-center justify-center p-4">
+                  <p className="text-[6px] lg:text-[8px] font-bold text-white text-center line-clamp-4 uppercase opacity-80" style={{ fontFamily: s.type === 'hook' ? currentTheme.hookFont : currentTheme.bodyFont }}>
+                    {s.text || 'Sem texto'}
+                  </p>
                 </div>
-
-                {/* Slide number badge */}
-                <div className="absolute top-3 left-3 bg-black/50 text-white text-[10px] font-bold px-2 py-0.5 rounded-full backdrop-blur-sm">
+                
+                {/* Badge */}
+                <div className={`absolute top-2 left-2 w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-bold ${currentSlide === i ? 'bg-indigo-500 text-white' : 'bg-black/60 text-slate-400'}`}>
                   {i + 1}
                 </div>
-
-                {isSelected && (
-                  <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-2 z-20">
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setBgModalOpen(true); }}
-                      className="bg-black/80 text-white px-3 py-1.5 rounded-xl text-xs font-medium flex items-center gap-1.5 backdrop-blur-md border border-white/10 hover:bg-black transition-colors shadow-xl"
-                    >
-                      <ImageIcon className="w-3.5 h-3.5" /> Trocar BG
-                    </button>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Editor Controls */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
-        {/* Slide Text Editor */}
-        <div className="lg:col-span-2 space-y-4">
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-sm">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold text-white flex items-center gap-2 text-lg">
-                <Type className="w-5 h-5 text-indigo-400" />
-                Editando Slide {currentSlide + 1}
-              </h3>
-              <div className="flex items-center gap-2">
-                <span className={`text-xs font-bold px-2 py-1 rounded-md uppercase ${slide.type === 'hook' ? 'bg-indigo-500/20 text-indigo-300' : 'bg-white/10 text-slate-400'}`}>
-                  {slide.type}
-                </span>
-                {/* Slide order controls */}
-                <button
-                  onClick={() => moveSlide(currentSlide, 'up')}
-                  disabled={currentSlide === 0 || slide.type === 'hook'}
-                  className="p-1.5 hover:bg-white/10 rounded-lg transition-colors text-slate-400 hover:text-white disabled:opacity-30"
-                  title="Mover para cima"
-                >
-                  <ChevronUp className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => moveSlide(currentSlide, 'down')}
-                  disabled={currentSlide === slides.length - 1}
-                  className="p-1.5 hover:bg-white/10 rounded-lg transition-colors text-slate-400 hover:text-white disabled:opacity-30"
-                  title="Mover para baixo"
-                >
-                  <ChevronDown className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-
-            <textarea
-              value={slide.text}
-              onChange={(e) => updateSlideText(currentSlide, e.target.value)}
-              rows={4}
-              className="w-full px-4 py-3 bg-[#0a0a0a] border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-white text-lg font-space resize-none"
-              placeholder="Texto do slide..."
-            />
-
-            {/* Slide actions */}
-            <div className="flex items-center justify-between mt-3">
-              <div className="flex gap-2">
-                <button
-                  onClick={addSlide}
-                  className="text-xs text-slate-400 hover:text-white flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-white/10 transition-colors border border-white/10"
-                >
-                  <Plus className="w-3.5 h-3.5" /> Adicionar slide
-                </button>
-                {slide.type !== 'hook' && (
-                  <button
-                    onClick={() => deleteSlide(currentSlide)}
-                    className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-red-500/10 transition-colors border border-white/10"
+                
+                {/* Quick actions on hover */}
+                {s.type !== 'hook' && (
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); deleteSlide(i); }}
+                    className="absolute top-2 right-2 p-1 bg-red-500/80 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity"
                   >
-                    <Trash2 className="w-3.5 h-3.5" /> Remover slide
+                    <Trash2 className="w-3 h-3" />
                   </button>
                 )}
               </div>
+            ))}
+          </div>
+        </aside>
+
+        {/* Center: Main Preview (Large) */}
+        <main className="flex-1 bg-[#111111] rounded-3xl border border-white/5 flex flex-col items-center justify-center relative group overflow-hidden">
+          <div className="absolute top-6 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-black/40 backdrop-blur-md px-3 py-1 rounded-full border border-white/10 z-20">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{currentSlide + 1} / {slides.length}</span>
+            <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest ml-2">{slides[currentSlide].type}</span>
+          </div>
+
+          <div 
+            className="relative w-full max-w-[450px] aspect-[4/5] rounded-2xl shadow-[0_30px_100px_rgba(0,0,0,0.5)] overflow-hidden transition-all duration-500"
+            style={{ background: slide.image_url ? `url(${slide.image_url}) center/cover` : currentTheme.gradient }}
+          >
+            <div className="absolute inset-0" style={{ backgroundColor: currentTheme.overlay }} />
+            
+            {/* Logo Slot */}
+            {logoUrl && (
+              <div className="absolute top-8 right-8 z-10">
+                <img src={logoUrl} alt="Logo" className="h-8 w-auto opacity-80" />
+              </div>
+            )}
+
+            {/* Watermark */}
+            {watermark && (
+              <div className="absolute top-8 left-0 right-0 text-center z-10">
+                <span className="text-xs font-bold tracking-[0.2em] opacity-40 uppercase" style={{ color: currentTheme.textColor }}>{watermark}</span>
+              </div>
+            )}
+
+            <div className="absolute inset-0 flex items-center justify-center p-12">
+              <div className="w-full text-center group/text relative">
+                {/* Direct Editing Overlay */}
+                <textarea
+                  value={slide.text}
+                  onChange={(e) => updateSlideText(currentSlide, e.target.value)}
+                  className="w-full bg-transparent border-none focus:ring-0 text-center p-0 resize-none overflow-hidden cursor-text placeholder:text-white/20"
+                  style={{ 
+                    color: currentTheme.textColor, 
+                    textShadow: currentTheme.textShadow, 
+                    fontFamily: slide.type === 'hook' ? currentTheme.hookFont : currentTheme.bodyFont,
+                    fontSize: slide.type === 'hook' ? '2.5rem' : '1.8rem',
+                    fontWeight: 'bold',
+                    lineHeight: '1.2'
+                  }}
+                  rows={4}
+                  placeholder="Clique para escrever..."
+                />
+              </div>
+            </div>
+
+            {/* Float Controls for Image */}
+            <div className="absolute bottom-6 left-0 right-0 flex justify-center opacity-0 group-hover:opacity-100 transition-all translate-y-2 group-hover:translate-y-0">
+              <button
+                onClick={() => setBgModalOpen(true)}
+                className="bg-white/10 hover:bg-white/20 backdrop-blur-xl border border-white/10 text-white px-4 py-2 rounded-full text-xs font-bold flex items-center gap-2 shadow-2xl transition-all"
+              >
+                <ImageIcon className="w-4 h-4" /> Trocar Fundo
+              </button>
+            </div>
+          </div>
+
+          {/* Navigation Arrows */}
+          <button 
+            onClick={() => scrollToSlide(currentSlide - 1)}
+            disabled={currentSlide === 0}
+            className="absolute left-4 top-1/2 -translate-y-1/2 p-3 bg-white/5 hover:bg-white/10 rounded-full text-white disabled:opacity-10 transition-all border border-white/5"
+          >
+            <ChevronUp className="-rotate-90 w-6 h-6" />
+          </button>
+          <button 
+            onClick={() => scrollToSlide(currentSlide + 1)}
+            disabled={currentSlide === slides.length - 1}
+            className="absolute right-4 top-1/2 -translate-y-1/2 p-3 bg-white/5 hover:bg-white/10 rounded-full text-white disabled:opacity-10 transition-all border border-white/5"
+          >
+            <ChevronUp className="rotate-90 w-6 h-6" />
+          </button>
+        </main>
+
+        {/* Right Sidebar: Settings */}
+        <aside className="w-72 flex flex-col gap-4 overflow-y-auto pr-2 custom-scrollbar">
+          <div className="bg-white/5 border border-white/10 rounded-2xl p-5 space-y-6">
+            <div>
+              <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Estilo & Tema</h4>
+              <div className="grid grid-cols-1 gap-2">
+                {(Object.keys(themeStyles) as ThemeKey[]).map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => setTheme(t)}
+                    className={`group px-3 py-2.5 rounded-xl border text-left transition-all ${theme === t ? 'border-indigo-500 bg-indigo-500/10' : 'border-white/5 hover:bg-white/5'}`}
+                  >
+                    <span className={`block font-bold text-sm mb-0.5 ${theme === t ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'}`}>
+                      {themeStyles[t].name}
+                    </span>
+                    <div className="flex gap-1">
+                      <div className="w-full h-1.5 rounded-full opacity-50" style={{ background: themeStyles[t].gradient }} />
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-4 pt-4 border-t border-white/5">
+              <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Branding</h4>
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">@Username / Arroba</label>
+                  <input
+                    value={watermark}
+                    onChange={(e) => setWatermark(e.target.value)}
+                    className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:ring-1 focus:ring-indigo-500"
+                    placeholder="@seu.perfil"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">URL do Logo</label>
+                  <input
+                    value={logoUrl}
+                    onChange={(e) => setLogoUrl(e.target.value)}
+                    className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:ring-1 focus:ring-indigo-500"
+                    placeholder="https://suamarca.com/logo.png"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-4 border-t border-white/5 space-y-3">
+              <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Legenda</h4>
+              <div className="relative">
+                <textarea
+                  value={caption}
+                  onChange={(e) => setCaption(e.target.value)}
+                  rows={6}
+                  className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-xs text-slate-300 focus:ring-1 focus:ring-indigo-500 resize-none"
+                  placeholder="Escreva sua legenda..."
+                />
+                <button
+                  onClick={handleCopyCaption}
+                  className="absolute bottom-2 right-2 p-1.5 bg-indigo-500/20 text-indigo-400 rounded-md hover:bg-indigo-500/30 transition-all"
+                  title="Copiar Legenda"
+                >
+                  {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+            </div>
+
+            <div className="pt-4 border-t border-white/5">
               <button
                 onClick={handleRegenSlide}
                 disabled={regenSlide}
-                className="text-xs text-indigo-300 hover:text-indigo-200 flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-indigo-500/10 transition-colors border border-indigo-500/30"
+                className="w-full bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all"
               >
                 {regenSlide ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-                {regenSlide ? 'Regenerando...' : 'Regenerar com IA'}
+                Regenerar Texto com IA
               </button>
             </div>
           </div>
-
-          {/* Caption */}
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-sm">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold text-white text-lg">Legenda TikTok/Reels</h3>
-              <button
-                onClick={handleCopyCaption}
-                className="text-sm text-indigo-400 hover:text-indigo-300 font-medium flex items-center gap-1 bg-indigo-400/10 px-3 py-1.5 rounded-lg transition-colors"
-              >
-                {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                {copied ? 'Copiado!' : 'Copiar'}
-              </button>
-            </div>
-            <textarea
-              value={caption}
-              onChange={(e) => setCaption(e.target.value)}
-              rows={4}
-              placeholder="Escreva sua legenda com hashtags..."
-              className="w-full px-4 py-3 bg-[#0a0a0a] border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-300 text-sm resize-none"
-            />
-          </div>
-        </div>
-
-        {/* Global Branding */}
-        <div className="space-y-4">
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-sm">
-            <h3 className="font-semibold text-white flex items-center gap-2 text-lg mb-6">
-              <Palette className="w-5 h-5 text-pink-400" /> Visual
-            </h3>
-
-            <div className="space-y-6">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-400">Tema</label>
-                <div className="grid grid-cols-1 gap-2">
-                  {(['dark', 'light', 'vibrant'] as ThemeKey[]).map((t) => (
-                    <button
-                      key={t}
-                      onClick={() => setTheme(t)}
-                      className={`px-4 py-3 rounded-xl border text-left transition-all ${theme === t ? 'border-indigo-500 bg-indigo-500/10' : 'border-white/10 hover:bg-white/5'}`}
-                    >
-                      {t === 'dark' && <><span className="block font-bold text-white mb-1 font-serif">Dark Premium</span><span className="text-xs text-slate-500">Serifs elegantes, sombras profundas</span></>}
-                      {t === 'light' && <><span className="block font-bold text-white mb-1 font-space">Light Clean</span><span className="text-xs text-slate-500">Sans-serif moderno, alto contraste</span></>}
-                      {t === 'vibrant' && <><span className="block font-bold text-pink-400 mb-1" style={{ textShadow: '0 0 10px rgba(236,72,153,0.5)' }}>Neon Vibrant</span><span className="text-xs text-slate-500">Bold, colorido, estilo TikTok</span></>}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="space-y-2 pt-2">
-                <label className="text-sm font-medium text-slate-400">Watermark / @arroba</label>
-                <input
-                  value={watermark}
-                  onChange={(e) => setWatermark(e.target.value)}
-                  placeholder="@seuperfil"
-                  className="w-full px-4 py-3 bg-[#0a0a0a] border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-white font-space"
-                />
-              </div>
-
-              <div className="pt-2 border-t border-white/10 text-xs text-slate-500 space-y-1">
-                <p>{slides.length} slides • {SLIDE_W}×{SLIDE_H}px</p>
-                <p>Formato: Instagram Feed (4:5)</p>
-              </div>
-            </div>
-          </div>
-        </div>
+        </aside>
       </div>
 
       {/* Hidden Export Container */}
@@ -464,14 +452,19 @@ export default function SlideshowEditor() {
 
             <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '100px' }}>
               <div style={{ textAlign: 'center', width: '100%' }}>
+                {logoUrl && (
+                  <div style={{ position: 'absolute', top: '80px', right: '80px', zIndex: 10 }}>
+                    <img src={logoUrl} alt="" style={{ height: '50px', width: 'auto', opacity: 0.8 }} />
+                  </div>
+                )}
                 <p style={{
                   color: currentTheme.textColor,
-                  fontSize: '76px',
+                  fontSize: s.type === 'hook' ? '86px' : '70px',
                   fontWeight: 'bold',
-                  lineHeight: '1.3',
+                  lineHeight: '1.2',
                   textShadow: currentTheme.textShadow,
                   whiteSpace: 'pre-line',
-                  fontFamily: currentTheme.fontFamily,
+                  fontFamily: s.type === 'hook' ? currentTheme.hookFont : currentTheme.bodyFont,
                 }}>
                   {s.text}
                 </p>

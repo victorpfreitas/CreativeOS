@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Images, Search, Loader2, Check, Upload } from 'lucide-react';
+import { Plus, Images, Search, Loader2, Check, Upload, Trash2 } from 'lucide-react';
 import Modal from '../components/ui/Modal';
 import type { ImageCollection } from '../lib/types';
 import * as db from '../lib/database';
@@ -161,7 +161,7 @@ export default function Collections() {
                     onClick={() => handleDelete(col.id)} 
                     className="p-2 hover:bg-red-500/10 rounded-xl text-slate-700 hover:text-red-400 transition-all opacity-0 group-hover:opacity-100"
                   >
-                    <Plus className="w-4 h-4 rotate-45" />
+                    <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
 

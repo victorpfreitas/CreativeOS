@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Zap, TrendingUp, Film, Clock, Plus, Loader2 } from 'lucide-react';
+import { Zap, TrendingUp, Film, Clock, Plus, Loader2, ChevronRight, Sparkles } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import * as db from '../lib/database';
 import type { Automation, Slideshow, ImageCollection } from '../lib/types';

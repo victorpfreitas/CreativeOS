@@ -365,35 +365,45 @@ export default function SlideshowEditor() {
               </div>
             )}
 
-            <div className="absolute inset-0 flex items-center justify-center p-16">
-              <div className="w-full text-center group/text relative">
+            <div className="absolute inset-0 flex flex-col items-center justify-center p-16">
+              <div className="w-full text-center group/text relative flex flex-col items-center justify-center min-h-[50%]">
                 {/* Direct Editing Overlay */}
                 <textarea
                   value={slide.text}
                   onChange={(e) => updateSlideText(currentSlide, e.target.value)}
-                  className="w-full bg-transparent border-none focus:ring-0 text-center p-0 resize-none overflow-hidden cursor-text placeholder:text-white/20 break-words"
+                  className="w-full bg-transparent border-none focus:ring-0 text-center p-0 resize-none overflow-hidden cursor-text placeholder:text-white/20 break-words flex items-center justify-center"
                   style={{ 
                     color: currentTheme.textColor, 
                     textShadow: currentTheme.textShadow, 
                     fontFamily: slide.type === 'hook' ? currentTheme.hookFont : currentTheme.bodyFont,
                     fontSize: getDynamicFontSize(slide.text, slide.type),
                     fontWeight: 'bold',
-                    lineHeight: '1.2'
+                    lineHeight: '1.2',
+                    height: 'auto',
+                    minHeight: '1em'
                   }}
-                  rows={10}
+                  rows={8}
                   placeholder="Clique para escrever..."
                 />
               </div>
             </div>
 
             {/* Float Controls for Image */}
-            <div className="absolute bottom-6 left-0 right-0 flex justify-center opacity-0 group-hover:opacity-100 transition-all translate-y-2 group-hover:translate-y-0">
+            <div className="absolute bottom-6 left-0 right-0 flex justify-center gap-2 opacity-0 group-hover:opacity-100 transition-all translate-y-2 group-hover:translate-y-0">
               <button
                 onClick={() => setBgModalOpen(true)}
                 className="bg-white/10 hover:bg-white/20 backdrop-blur-xl border border-white/10 text-white px-4 py-2 rounded-full text-xs font-bold flex items-center gap-2 shadow-2xl transition-all"
               >
                 <ImageIcon className="w-4 h-4" /> Trocar Fundo
               </button>
+              {slide.image_url && (
+                <button
+                  onClick={() => changeBackgroundImage('')}
+                  className="bg-red-500/20 hover:bg-red-500/40 backdrop-blur-xl border border-red-500/20 text-red-200 px-4 py-2 rounded-full text-xs font-bold flex items-center gap-2 shadow-2xl transition-all"
+                >
+                  <Trash2 className="w-4 h-4" /> Remover Imagem
+                </button>
+              )}
             </div>
           </div>
 

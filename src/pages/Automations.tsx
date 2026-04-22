@@ -94,8 +94,8 @@ export default function Automations() {
           </Link>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-          <table className="w-full text-left border-collapse">
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm">
+          <table className="w-full text-left border-collapse overflow-visible">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50">
                 <th className="p-4 text-sm font-medium text-slate-500">Name & Niche</th>

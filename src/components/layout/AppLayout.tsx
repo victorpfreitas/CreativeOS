@@ -9,7 +9,7 @@ export default function AppLayout() {
   return (
     <div className="flex h-screen overflow-hidden bg-[#0a0a0a] text-slate-300 font-space">
       <Sidebar />
-      <main className="flex-1 overflow-y-auto relative">
+      <main className="flex-1 overflow-y-auto overflow-x-hidden relative">
         {/* Subtle background glow effect */}
         <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] bg-indigo-600/20 rounded-full blur-[120px] pointer-events-none" />
         <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-pink-600/10 rounded-full blur-[120px] pointer-events-none" />

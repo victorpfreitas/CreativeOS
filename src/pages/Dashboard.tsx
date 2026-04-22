@@ -130,70 +130,77 @@ export default function Dashboard() {
       </header>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         {statCards.map((card) => {
           const Icon = card.icon;
           return (
-            <div key={card.label} className="bg-white/5 p-6 rounded-2xl border border-white/10 backdrop-blur-sm">
+            <div key={card.label} className="premium-card p-6 group hover:border-white/10 transition-all duration-500">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-medium text-slate-400">{card.label}</h3>
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${card.color.replace('bg-', 'bg-opacity-20 bg-')}`}>
-                  <Icon className="w-5 h-5" />
+                <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest">{card.label}</h3>
+                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all group-hover:scale-110 ${card.color}`}>
+                  <Icon className="w-6 h-6" />
                 </div>
               </div>
-              <p className="text-4xl font-bold text-white font-space">{card.value}</p>
+              <p className="text-4xl font-bold text-white font-space tracking-tighter">{card.value}</p>
+              <div className="mt-4 flex items-center gap-2 text-[10px] font-bold text-slate-600 uppercase tracking-widest">
+                <TrendingUp className="w-3 h-3 text-emerald-500" /> +12% this month
+              </div>
             </div>
           );
         })}
       </div>
 
       {/* Quick Actions */}
-      <div className="flex gap-3">
-        <Link to="/automations/new" className="bg-white/5 hover:bg-white/10 text-white px-5 py-3 rounded-xl font-medium border border-white/10 transition-colors flex items-center gap-2">
-          <Zap className="w-4 h-4 text-indigo-400" /> New Automation
+      <div className="flex flex-wrap gap-4">
+        <Link to="/automations/new" className="premium-button-primary flex items-center gap-3">
+          <Zap className="w-5 h-5 text-white shadow-lg" /> New Automation
         </Link>
-        <Link to="/projects" className="bg-white/5 hover:bg-white/10 text-white px-5 py-3 rounded-xl font-medium border border-white/10 transition-colors">
+        <Link to="/projects" className="premium-button-secondary flex items-center gap-3">
           Manage Projects
         </Link>
       </div>
 
       {/* Recent content */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white/5 rounded-2xl border border-white/10 backdrop-blur-sm overflow-hidden">
-          <div className="p-5 border-b border-white/5">
-            <h2 className="font-semibold text-white">Recent Automations</h2>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="premium-card overflow-hidden">
+          <div className="p-6 border-b border-white/5 flex items-center justify-between">
+            <h2 className="text-xl font-bold text-white">Recent Automations</h2>
+            <Link to="/automations" className="text-xs font-black text-indigo-400 uppercase tracking-widest hover:text-indigo-300">View All</Link>
           </div>
-          {recentAutomations.length === 0 ? <div className="p-8 text-center text-slate-500 text-sm">No automations yet</div> : (
+          {recentAutomations.length === 0 ? <div className="p-12 text-center text-slate-600 text-sm italic">No systems created yet</div> : (
             <div className="divide-y divide-white/5">
               {recentAutomations.map((auto) => (
-                <Link key={auto.id} to={`/automations/${auto.id}`} className="flex items-center gap-4 p-5 hover:bg-white/5 transition-colors group">
-                  <div className="w-10 h-10 rounded-xl bg-indigo-500/10 flex items-center justify-center group-hover:scale-110 transition-transform">
-                    <Zap className="w-5 h-5 text-indigo-400" />
+                <Link key={auto.id} to={`/automations/${auto.id}`} className="flex items-center gap-4 p-6 hover:bg-white/[0.03] transition-colors group">
+                  <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 flex items-center justify-center group-hover:scale-110 transition-transform">
+                    <Zap className="w-6 h-6 text-indigo-400" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-medium text-white truncate text-lg">{auto.name}</p>
-                    <p className="text-sm text-slate-400">{auto.niche}</p>
+                    <p className="font-bold text-white truncate text-lg group-hover:text-indigo-300 transition-colors">{auto.name}</p>
+                    <p className="text-xs text-slate-500 mt-1 uppercase tracking-widest font-black">{auto.niche}</p>
                   </div>
+                  <ChevronRight className="w-5 h-5 text-slate-800 group-hover:text-indigo-400 group-hover:translate-x-1 transition-all" />
                 </Link>
               ))}
             </div>
           )}
         </div>
-        <div className="bg-white/5 rounded-2xl border border-white/10 backdrop-blur-sm overflow-hidden">
-          <div className="p-5 border-b border-white/5">
-            <h2 className="font-semibold text-white">Recent Slideshows</h2>
+        <div className="premium-card overflow-hidden">
+          <div className="p-6 border-b border-white/5 flex items-center justify-between">
+            <h2 className="text-xl font-bold text-white">Recent Slideshows</h2>
+            <Link to="/gallery" className="text-xs font-black text-emerald-400 uppercase tracking-widest hover:text-emerald-300">View All</Link>
           </div>
-          {recentSlideshows.length === 0 ? <div className="p-8 text-center text-slate-500 text-sm">No slideshows yet</div> : (
+          {recentSlideshows.length === 0 ? <div className="p-12 text-center text-slate-600 text-sm italic">No carousels generated yet</div> : (
             <div className="divide-y divide-white/5">
               {recentSlideshows.map((show) => (
-                <Link key={show.id} to={`/editor/${show.id}`} className="flex items-center gap-4 p-5 hover:bg-white/5 transition-colors group">
-                  <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center group-hover:scale-110 transition-transform">
-                    <Film className="w-5 h-5 text-emerald-400" />
+                <Link key={show.id} to={`/editor/${show.id}`} className="flex items-center gap-4 p-6 hover:bg-white/[0.03] transition-colors group">
+                  <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 flex items-center justify-center group-hover:scale-110 transition-transform">
+                    <Film className="w-6 h-6 text-emerald-400" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-medium text-white truncate text-lg">{show.hook?.text || show.slides?.[0]?.text || 'Untitled'}</p>
-                    <p className="text-sm text-slate-400">{show.slides?.length || 0} slides</p>
+                    <p className="font-bold text-white truncate text-lg group-hover:text-emerald-300 transition-colors">{show.hook?.text || show.slides?.[0]?.text || 'Untitled Carousel'}</p>
+                    <p className="text-xs text-slate-500 mt-1 uppercase tracking-widest font-black">{show.slides?.length || 0} Slides</p>
                   </div>
+                  <ChevronRight className="w-5 h-5 text-slate-800 group-hover:text-emerald-400 group-hover:translate-x-1 transition-all" />
                 </Link>
               ))}
             </div>
@@ -203,36 +210,36 @@ export default function Dashboard() {
 
       {/* Quick Create Modal */}
       <Modal open={quickCreateOpen} onClose={() => !generating && setQuickCreateOpen(false)} title="Quick Create Carousel">
-        <div className="space-y-4">
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium text-slate-700">Topic or Idea</label>
-            <input value={topic} onChange={e => setTopic(e.target.value)} placeholder="e.g. 3 tools for productivity" className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+        <div className="space-y-6">
+          <div className="space-y-2">
+            <label className="premium-label">Topic or Idea</label>
+            <input value={topic} onChange={e => setTopic(e.target.value)} placeholder="e.g. 3 tools for productivity" className="premium-input w-full" />
           </div>
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium text-slate-700">Image Collection (Backgrounds)</label>
-            <select value={selectedCol} onChange={e => setSelectedCol(e.target.value)} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          <div className="space-y-2">
+            <label className="premium-label">Image Collection (Backgrounds)</label>
+            <select value={selectedCol} onChange={e => setSelectedCol(e.target.value)} className="premium-input w-full cursor-pointer appearance-none">
               <option value="">Random Colors</option>
-              {collections.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              {collections.map(c => <option key={c.id} value={c.id} className="bg-[#1a1a1a]">{c.name}</option>)}
             </select>
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-slate-700">Theme</label>
-              <select value={theme} onChange={e => setTheme(e.target.value as any)} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                <option value="dark">Dark Premium</option>
-                <option value="light">Light Clean</option>
-                <option value="vibrant">Neon Vibrant</option>
+          <div className="grid grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <label className="premium-label">Theme</label>
+              <select value={theme} onChange={e => setTheme(e.target.value as any)} className="premium-input w-full cursor-pointer appearance-none">
+                <option value="dark" className="bg-[#1a1a1a]">Dark Premium</option>
+                <option value="light" className="bg-[#1a1a1a]">Light Clean</option>
+                <option value="vibrant" className="bg-[#1a1a1a]">Neon Vibrant</option>
               </select>
             </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-slate-700">Watermark / @arroba</label>
-              <input value={watermark} onChange={e => setWatermark(e.target.value)} placeholder="@madebyhuman" className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            <div className="space-y-2">
+              <label className="premium-label">Watermark / @arroba</label>
+              <input value={watermark} onChange={e => setWatermark(e.target.value)} placeholder="@madebyhuman" className="premium-input w-full" />
             </div>
           </div>
-          <div className="pt-4 flex justify-end gap-3">
-            <button onClick={() => setQuickCreateOpen(false)} disabled={generating} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg">Cancel</button>
-            <button onClick={handleQuickCreate} disabled={generating || !topic.trim()} className="bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-50 px-5 py-2 rounded-lg font-medium flex items-center gap-2">
-              {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />} {generating ? 'Generating AI...' : 'Create Magic'}
+          <div className="pt-6 flex justify-end gap-3">
+            <button onClick={() => setQuickCreateOpen(false)} disabled={generating} className="premium-button-secondary text-sm">Cancel</button>
+            <button onClick={handleQuickCreate} disabled={generating || !topic.trim()} className="premium-button-primary text-sm flex items-center gap-3">
+              {generating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />} {generating ? 'Magic in progress...' : 'Create Carousel'}
             </button>
           </div>
         </div>

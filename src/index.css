@@ -6,11 +6,12 @@
 
 @layer base {
   body {
-    @apply bg-[#0a0a0a] text-slate-300 antialiased;
+    @apply bg-[#050505] text-slate-400 antialiased;
     font-family: 'Outfit', sans-serif;
   }
   
   h1, h2, h3, h4, h5, h6 {
+    @apply text-white font-bold;
     font-family: 'Outfit', sans-serif;
   }
   
@@ -21,22 +22,42 @@
   .font-space {
     font-family: 'Space Grotesk', sans-serif;
   }
-}
 
-/* Custom Scrollbar for the dark theme */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: #334155;
-  border-radius: 4px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #475569;
+  /* Premium UI Patterns */
+  .premium-card {
+    @apply bg-[#0f0f0f] border border-white/5 rounded-2xl shadow-xl shadow-black/20;
+  }
+
+  .premium-input {
+    @apply bg-white/[0.03] border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500/50 transition-all;
+  }
+
+  .premium-button-primary {
+    @apply bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-2.5 rounded-xl font-bold transition-all shadow-lg shadow-indigo-600/20 active:scale-[0.98];
+  }
+
+  .premium-button-secondary {
+    @apply bg-white/5 hover:bg-white/10 text-white px-6 py-2.5 rounded-xl font-bold border border-white/10 transition-all active:scale-[0.98];
+  }
+
+  .premium-label {
+    @apply text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1.5 block;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.2);
+  }
 }
 
 /* Carousel snap scrolling */
@@ -47,4 +68,9 @@
 
 .carousel-slide {
   scroll-snap-align: start;
+}
+
+select option {
+  background-color: #1a1a1a;
+  color: white;
 }

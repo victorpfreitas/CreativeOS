@@ -84,55 +84,93 @@ export default function NewAutomation() {
   const bodyCols = collections.filter(c => c.type === 'body');
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
-      <header className="flex items-center gap-4">
-        <Link to="/automations" className="p-2 hover:bg-slate-200 rounded-full transition-colors text-slate-500">
+    <div className="max-w-3xl mx-auto space-y-8 py-8">
+      <header className="flex items-center gap-4 px-2">
+        <Link to="/automations" className="p-2.5 bg-white/5 hover:bg-white/10 border border-white/5 rounded-xl transition-all text-slate-400">
           <ArrowLeft className="w-5 h-5" />
         </Link>
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Create Automation</h1>
-          <p className="text-slate-500 text-sm">Design a repeatable content system for a specific niche.</p>
+          <h1 className="text-3xl font-bold tracking-tight">Create Automation</h1>
+          <p className="text-slate-500 text-sm mt-1">Design a repeatable content system for a specific niche.</p>
         </div>
       </header>
 
       <div className="space-y-6">
         {/* Project Selection */}
-        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-4">
-          <h2 className="text-lg font-semibold text-slate-900">Project</h2>
-          <select value={projectId} onChange={(e) => setProjectId(e.target.value)} className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
-            <option value="">Select a project...</option>
-            {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
-          {projects.length === 0 && <p className="text-sm text-amber-600">No projects found. <Link to="/projects" className="underline font-medium">Create one first</Link>.</p>}
+        <div className="premium-card p-6 space-y-4">
+          <h2 className="text-lg font-bold text-white">Project Connection</h2>
+          <div className="space-y-2">
+            <label className="premium-label">Target Project</label>
+            <select 
+              value={projectId} 
+              onChange={(e) => setProjectId(e.target.value)} 
+              className="premium-input w-full appearance-none cursor-pointer"
+            >
+              <option value="">Select a project...</option>
+              {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+            {projects.length === 0 && <p className="text-xs text-amber-500/80 mt-2">No projects found. <Link to="/projects" className="underline font-bold text-amber-500">Create one first</Link>.</p>}
+          </div>
         </div>
 
         {/* Core Strategy */}
-        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-4">
-          <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2"><Sparkles className="w-5 h-5 text-indigo-500" />Core Strategy</h2>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5"><label className="text-sm font-medium text-slate-700">Automation Name *</label><input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Real Estate Tips" className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" /></div>
-            <div className="space-y-1.5"><label className="text-sm font-medium text-slate-700">Niche / Topic *</label><input type="text" value={niche} onChange={(e) => setNiche(e.target.value)} placeholder="e.g. First-time homebuyers" className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" /></div>
+        <div className="premium-card p-8 space-y-6">
+          <div className="flex items-center gap-3 pb-2 border-b border-white/5">
+            <div className="p-2 bg-indigo-500/10 rounded-lg">
+              <Sparkles className="w-5 h-5 text-indigo-400" />
+            </div>
+            <h2 className="text-xl font-bold text-white">Core Strategy</h2>
           </div>
-          <div className="space-y-1.5"><label className="text-sm font-medium text-slate-700">Narrative Prompt</label><textarea rows={3} value={narrativePrompt} onChange={(e) => setNarrativePrompt(e.target.value)} placeholder="e.g. Informative but casual..." className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" /></div>
-          <div className="space-y-1.5"><label className="text-sm font-medium text-slate-700">Format Prompt</label><textarea rows={2} value={formatPrompt} onChange={(e) => setFormatPrompt(e.target.value)} placeholder="e.g. 5 slides max. Short bullet points. Use emojis." className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" /></div>
-          <div className="space-y-1.5"><label className="text-sm font-medium text-slate-700">Soft CTA</label><input type="text" value={softCta} onChange={(e) => setSoftCta(e.target.value)} placeholder="e.g. Follow for more tips 👋" className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" /></div>
+          
+          <div className="grid grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <label className="premium-label">Automation Name *</label>
+              <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Real Estate Tips" className="premium-input w-full" />
+            </div>
+            <div className="space-y-2">
+              <label className="premium-label">Niche / Topic *</label>
+              <input type="text" value={niche} onChange={(e) => setNiche(e.target.value)} placeholder="e.g. First-time homebuyers" className="premium-input w-full" />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="premium-label">Narrative Prompt</label>
+            <textarea rows={3} value={narrativePrompt} onChange={(e) => setNarrativePrompt(e.target.value)} placeholder="e.g. Informative but casual, focus on pain points..." className="premium-input w-full resize-none" />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <label className="premium-label">Format Prompt</label>
+              <textarea rows={2} value={formatPrompt} onChange={(e) => setFormatPrompt(e.target.value)} placeholder="e.g. 5 slides max. Short bullet points." className="premium-input w-full resize-none" />
+            </div>
+            <div className="space-y-2">
+              <label className="premium-label">Soft CTA</label>
+              <textarea rows={2} value={softCta} onChange={(e) => setSoftCta(e.target.value)} placeholder="e.g. Follow for more tips 👋" className="premium-input w-full resize-none" />
+            </div>
+          </div>
         </div>
 
         {/* Image Content */}
-        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-4">
-          <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2"><ImageIcon className="w-5 h-5 text-indigo-500" />Visual Identity</h2>
-          <p className="text-sm text-slate-500">Select image collections to automatically assign backgrounds to generated slides.</p>
-          <div className="grid grid-cols-2 gap-6">
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-slate-700">Hook Cover Collection</label>
-              <select value={hookCollectionId} onChange={(e) => setHookCollectionId(e.target.value)} className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+        <div className="premium-card p-8 space-y-6">
+          <div className="flex items-center gap-3 pb-2 border-b border-white/5">
+            <div className="p-2 bg-indigo-500/10 rounded-lg">
+              <ImageIcon className="w-5 h-5 text-indigo-400" />
+            </div>
+            <h2 className="text-xl font-bold text-white">Visual Identity</h2>
+          </div>
+          <p className="text-sm text-slate-500 leading-relaxed">Select image collections to automatically assign backgrounds to generated slides.</p>
+          
+          <div className="grid grid-cols-2 gap-8">
+            <div className="space-y-2">
+              <label className="premium-label">Hook Cover Collection</label>
+              <select value={hookCollectionId} onChange={(e) => setHookCollectionId(e.target.value)} className="premium-input w-full appearance-none cursor-pointer">
                 <option value="">None (Random colors)</option>
                 {hookCols.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-slate-700">Body Slides Collection</label>
-              <select value={bodyCollectionId} onChange={(e) => setBodyCollectionId(e.target.value)} className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            <div className="space-y-2">
+              <label className="premium-label">Body Slides Collection</label>
+              <select value={bodyCollectionId} onChange={(e) => setBodyCollectionId(e.target.value)} className="premium-input w-full appearance-none cursor-pointer">
                 <option value="">None (Random colors)</option>
                 {bodyCols.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
@@ -141,23 +179,52 @@ export default function NewAutomation() {
         </div>
 
         {/* Schedule */}
-        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-4">
-          <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2"><Calendar className="w-5 h-5 text-indigo-500" />Schedule & Publishing</h2>
-          <div className="space-y-3">
-            <label className="text-sm font-medium text-slate-700">Days</label>
-            <div className="flex gap-2">
-              {dayOptions.map((day) => <button key={day.value} type="button" onClick={() => toggleDay(day.value)} className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${scheduleDays.includes(day.value) ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`}>{day.label}</button>)}
+        <div className="premium-card p-8 space-y-6">
+          <div className="flex items-center gap-3 pb-2 border-b border-white/5">
+            <div className="p-2 bg-indigo-500/10 rounded-lg">
+              <Calendar className="w-5 h-5 text-indigo-400" />
+            </div>
+            <h2 className="text-xl font-bold text-white">Publishing Schedule</h2>
+          </div>
+          
+          <div className="space-y-4">
+            <label className="premium-label">Weekly Schedule</label>
+            <div className="flex flex-wrap gap-2">
+              {dayOptions.map((day) => (
+                <button 
+                  key={day.value} 
+                  type="button" 
+                  onClick={() => toggleDay(day.value)} 
+                  className={`px-4 py-2 rounded-xl text-sm font-bold transition-all border ${
+                    scheduleDays.includes(day.value) 
+                      ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-600/20' 
+                      : 'bg-white/5 border-white/5 text-slate-500 hover:text-slate-300 hover:bg-white/10'
+                  }`}
+                >
+                  {day.label}
+                </button>
+              ))}
             </div>
           </div>
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium text-slate-700">Time</label>
-            <input type="time" value={scheduleTime} onChange={(e) => setScheduleTime(e.target.value)} className="px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          
+          <div className="space-y-2">
+            <label className="premium-label">Preferred Time</label>
+            <input type="time" value={scheduleTime} onChange={(e) => setScheduleTime(e.target.value)} className="premium-input w-40" />
           </div>
         </div>
 
-        <div className="flex justify-end pt-4 pb-12">
-          <button type="button" onClick={handleSave} disabled={saving || !projectId || !name.trim() || !niche.trim()} className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-6 py-2.5 rounded-lg font-medium flex items-center gap-2 transition-colors">
-            {saving ? <><Loader2 className="w-4 h-4 animate-spin" /> Creating...</> : <><Save className="w-4 h-4" /> Save & Generate Hooks</>}
+        <div className="flex justify-end pt-6 pb-20">
+          <button 
+            type="button" 
+            onClick={handleSave} 
+            disabled={saving || !projectId || !name.trim() || !niche.trim()} 
+            className="premium-button-primary flex items-center gap-3 group disabled:opacity-30 disabled:grayscale"
+          >
+            {saving ? (
+              <><Loader2 className="w-5 h-5 animate-spin" /> Creating...</>
+            ) : (
+              <><Save className="w-5 h-5 group-hover:scale-110 transition-transform" /> Save & Generate Hooks</>
+            )}
           </button>
         </div>
       </div>

@@ -345,8 +345,8 @@ export default function AutomationDetail() {
                     )}
                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors rounded-xl" />
                     <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-3 rounded-b-xl">
-                      <p className="text-white text-xs font-medium line-clamp-2 leading-tight">
-                        {show.hook?.text || 'Carrossel'}
+                      <p className="text-white text-[10px] font-bold line-clamp-2 leading-tight uppercase tracking-wider opacity-90">
+                        {show.hook?.text ? (show.hook.text.length > 40 ? show.hook.text.substring(0, 40) + '...' : show.hook.text) : 'Carrossel'}
                       </p>
                       <div className="flex items-center justify-between mt-1">
                         <span className="text-slate-400 text-[10px]">{show.slides?.length} slides</span>

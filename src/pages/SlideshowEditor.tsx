@@ -31,6 +31,8 @@ export default function SlideshowEditor() {
   const [regenSlide, setRegenSlide] = useState(false);
 
   const [bgModalOpen, setBgModalOpen] = useState(false);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [slideToDelete, setSlideToDelete] = useState<number | null>(null);
   const [collections, setCollections] = useState<ImageCollection[]>([]);
 
   const slideRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -104,12 +106,20 @@ export default function SlideshowEditor() {
     setTimeout(() => scrollToSlide(currentSlide + 1), 50);
   }
 
-  function deleteSlide(index: number) {
+  function confirmDeleteSlide(index: number) {
     if (slides[index].type === 'hook') return;
-    const updated = slides.filter((_, i) => i !== index);
+    setSlideToDelete(index);
+    setDeleteModalOpen(true);
+  }
+
+  function deleteSlide() {
+    if (slideToDelete === null) return;
+    const updated = slides.filter((_, i) => i !== slideToDelete);
     setSlides(updated);
     slideRefs.current = new Array(updated.length).fill(null);
-    scrollToSlide(Math.min(index, updated.length - 1));
+    scrollToSlide(Math.min(slideToDelete, updated.length - 1));
+    setDeleteModalOpen(false);
+    setSlideToDelete(null);
   }
 
   function moveSlide(index: number, direction: 'up' | 'down') {
@@ -121,6 +131,23 @@ export default function SlideshowEditor() {
     [updated[index], updated[target]] = [updated[target], updated[index]];
     setSlides(updated);
     scrollToSlide(target);
+  }
+
+  function getDynamicFontSize(text: string, type: 'hook' | 'body', isExport = false) {
+    const length = text.length;
+    if (isExport) {
+      let baseSize = type === 'hook' ? 86 : 70;
+      if (length > 120) baseSize *= 0.6;
+      else if (length > 80) baseSize *= 0.75;
+      else if (length > 50) baseSize *= 0.9;
+      return `${baseSize}px`;
+    } else {
+      let baseSize = type === 'hook' ? 2.5 : 1.8;
+      if (length > 120) baseSize *= 0.6;
+      else if (length > 80) baseSize *= 0.75;
+      else if (length > 50) baseSize *= 0.9;
+      return `${baseSize}rem`;
+    }
   }
 
   async function handleRegenSlide() {
@@ -256,14 +283,32 @@ export default function SlideshowEditor() {
                 </div>
                 
                 {/* Quick actions on hover */}
-                {s.type !== 'hook' && (
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); deleteSlide(i); }}
-                    className="absolute top-2 right-2 p-1 bg-red-500/80 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                  </button>
-                )}
+                <div className="absolute top-2 right-2 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                  {s.type !== 'hook' && (
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); confirmDeleteSlide(i); }}
+                      className="p-1.5 bg-red-500 hover:bg-red-600 text-white rounded-lg shadow-lg"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                  {i > 0 && s.type !== 'hook' && (
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); moveSlide(i, 'up'); }}
+                      className="p-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow-lg"
+                    >
+                      <ChevronUp className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                  {i < slides.length - 1 && (
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); moveSlide(i, 'down'); }}
+                      className="p-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow-lg"
+                    >
+                      <ChevronDown className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -307,7 +352,7 @@ export default function SlideshowEditor() {
                     color: currentTheme.textColor, 
                     textShadow: currentTheme.textShadow, 
                     fontFamily: slide.type === 'hook' ? currentTheme.hookFont : currentTheme.bodyFont,
-                    fontSize: slide.type === 'hook' ? '2.5rem' : '1.8rem',
+                    fontSize: getDynamicFontSize(slide.text, slide.type),
                     fontWeight: 'bold',
                     lineHeight: '1.2'
                   }}
@@ -459,7 +504,7 @@ export default function SlideshowEditor() {
                 )}
                 <p style={{
                   color: currentTheme.textColor,
-                  fontSize: s.type === 'hook' ? '86px' : '70px',
+                  fontSize: getDynamicFontSize(s.text, s.type, true),
                   fontWeight: 'bold',
                   lineHeight: '1.2',
                   textShadow: currentTheme.textShadow,
@@ -473,6 +518,27 @@ export default function SlideshowEditor() {
           </div>
         ))}
       </div>
+
+      {/* Delete Confirmation Modal */}
+      <Modal open={deleteModalOpen} onClose={() => setDeleteModalOpen(false)} title="Remover Slide" maxWidth="max-w-md">
+        <div className="p-6 text-center space-y-6">
+          <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto">
+            <Trash2 className="w-8 h-8" />
+          </div>
+          <div className="space-y-2">
+            <h3 className="text-xl font-bold text-slate-900">Tem certeza?</h3>
+            <p className="text-slate-500">Esta ação não pode ser desfeita. O slide será removido permanentemente.</p>
+          </div>
+          <div className="flex gap-3">
+            <button onClick={() => setDeleteModalOpen(false)} className="flex-1 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold transition-colors">
+              Cancelar
+            </button>
+            <button onClick={deleteSlide} className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold transition-colors shadow-lg shadow-red-600/20">
+              Remover
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Background Selection Modal */}
       <Modal open={bgModalOpen} onClose={() => setBgModalOpen(false)} title="Selecionar Imagem de Fundo" maxWidth="max-w-5xl">

@@ -1,20 +1,21 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import { Component, type ReactNode } from 'react';
+import { Component, Suspense, lazy, type ReactNode } from 'react';
 import AppLayout from './components/layout/AppLayout';
-import Dashboard from './pages/Dashboard';
-import Projects from './pages/Projects';
-import ProjectDetail from './pages/ProjectDetail';
-import ContentAnalysis from './pages/ContentAnalysis';
-import WeeklyPlanning from './pages/WeeklyPlanning';
-import Automations from './pages/Automations';
-import NewAutomation from './pages/NewAutomation';
-import AutomationDetail from './pages/AutomationDetail';
-import SlideshowEditor from './pages/SlideshowEditor';
-import Collections from './pages/Collections';
-import Gallery from './pages/Gallery';
-import Login from './pages/Login';
 import ProtectedRoute from './components/layout/ProtectedRoute';
 import { AuthProvider } from './lib/AuthContext';
+
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Projects = lazy(() => import('./pages/Projects'));
+const ProjectDetail = lazy(() => import('./pages/ProjectDetail'));
+const ContentAnalysis = lazy(() => import('./pages/ContentAnalysis'));
+const WeeklyPlanning = lazy(() => import('./pages/WeeklyPlanning'));
+const Automations = lazy(() => import('./pages/Automations'));
+const NewAutomation = lazy(() => import('./pages/NewAutomation'));
+const AutomationDetail = lazy(() => import('./pages/AutomationDetail'));
+const SlideshowEditor = lazy(() => import('./pages/SlideshowEditor'));
+const Collections = lazy(() => import('./pages/Collections'));
+const Gallery = lazy(() => import('./pages/Gallery'));
+const Login = lazy(() => import('./pages/Login'));
 
 interface ErrorBoundaryProps { children: ReactNode }
 interface ErrorBoundaryState { error: Error | null }
@@ -50,6 +51,14 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
 }
 
+function PageFallback() {
+  return (
+    <div className="min-h-[320px] flex items-center justify-center text-slate-500">
+      <div className="h-8 w-8 rounded-full border-2 border-slate-700 border-t-indigo-500 animate-spin" />
+    </div>
+  );
+}
+
 function NotFound() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#0a0a0a] text-white">
@@ -67,27 +76,29 @@ function App() {
     <ErrorBoundary>
       <AuthProvider>
         <BrowserRouter>
-          <Routes>
-            <Route path="/login" element={<Login />} />
+          <Suspense fallback={<PageFallback />}>
+            <Routes>
+              <Route path="/login" element={<Login />} />
 
-            <Route element={<ProtectedRoute />}>
-              <Route path="/" element={<AppLayout />}>
-                <Route index element={<Dashboard />} />
-                <Route path="projects" element={<Projects />} />
-                <Route path="projects/:id" element={<ProjectDetail />} />
-                <Route path="projects/:id/analysis" element={<ContentAnalysis />} />
-                <Route path="projects/:id/planning" element={<WeeklyPlanning />} />
-                <Route path="automations" element={<Automations />} />
-                <Route path="automations/new" element={<NewAutomation />} />
-                <Route path="automations/:id" element={<AutomationDetail />} />
-                <Route path="editor/:id" element={<SlideshowEditor />} />
-                <Route path="collections" element={<Collections />} />
-                <Route path="gallery" element={<Gallery />} />
+              <Route element={<ProtectedRoute />}>
+                <Route path="/" element={<AppLayout />}>
+                  <Route index element={<Dashboard />} />
+                  <Route path="projects" element={<Projects />} />
+                  <Route path="projects/:id" element={<ProjectDetail />} />
+                  <Route path="projects/:id/analysis" element={<ContentAnalysis />} />
+                  <Route path="projects/:id/planning" element={<WeeklyPlanning />} />
+                  <Route path="automations" element={<Automations />} />
+                  <Route path="automations/new" element={<NewAutomation />} />
+                  <Route path="automations/:id" element={<AutomationDetail />} />
+                  <Route path="editor/:id" element={<SlideshowEditor />} />
+                  <Route path="collections" element={<Collections />} />
+                  <Route path="gallery" element={<Gallery />} />
+                </Route>
               </Route>
-            </Route>
 
-            <Route path="*" element={<NotFound />} />
-          </Routes>
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </Suspense>
         </BrowserRouter>
       </AuthProvider>
     </ErrorBoundary>

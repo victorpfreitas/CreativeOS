@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { FolderGit2, Plus, Trash2, Zap, BarChart2, Calendar, ChevronRight } from 'lucide-react';
+import { FolderGit2, Plus, Trash2, Zap, BarChart2, ChevronRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import Modal from '../components/ui/Modal';
 import type { Project } from '../lib/types';

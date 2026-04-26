@@ -2,7 +2,7 @@
 // Made by Human — AI Service
 // ============================================================
 
-import type { BrandDNA, ContentAnalysis, ContentBrief, ContentPlanItem, ContentStrategy } from '../lib/types';
+import type { BrandDNA, ContentAnalysis, ContentBrief, ContentPlanItem, ContentStrategy, Slide } from '../lib/types';
 import { getExpertContentPreset } from '../lib/contentPresets';
 
 async function callAI(prompt: string): Promise<string> {
@@ -57,6 +57,36 @@ function normalizeSlideText(text: string, index: number): string {
     .trim() || (index === 0 ? 'Uma ideia forte começa aqui' : 'Escreva este slide');
 }
 
+function compactText(value?: string): string {
+  return (value || '')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function composeSlideText(slide: Pick<Slide, 'tagline' | 'title' | 'body' | 'cta' | 'text'>) {
+  return [slide.tagline, slide.title, slide.body, slide.cta].filter(Boolean).join('\n\n') || slide.text || '';
+}
+
+function normalizeStructuredSlide(slide: Partial<Slide>, index: number, fallbackCta: string): Slide {
+  const title = compactText(slide.title) || normalizeSlideText(slide.text || '', index);
+  const body = compactText(slide.body);
+  const tagline = compactText(slide.tagline);
+  const cta = index === 4 ? compactText(slide.cta) || fallbackCta : compactText(slide.cta);
+  const accentText = compactText(slide.accent_text);
+  const next: Slide = {
+    type: index === 0 ? 'hook' : 'body',
+    text: '',
+    image_url: slide.image_url || '',
+    tagline,
+    title,
+    body,
+    cta,
+    accent_text: accentText,
+  };
+  return { ...next, text: composeSlideText(next) };
+}
+
 // ---- Brand DNA Compiler ----
 
 export function compileBrandDNA(dna: BrandDNA): string {
@@ -91,6 +121,7 @@ export async function generateContentStrategy(params: {
   const { brief, brandDNA, knowledgeBase } = params;
   const preset = getExpertContentPreset(brief.preset_id);
   const brandContext = brandDNA ? compileBrandDNA(brandDNA) : knowledgeBase;
+  const finalCta = brief.cta || preset.defaultCta;
 
   const prompt = `You are a senior content strategist and editorial carousel writer for high-ticket experts and infoproduct creators.
 
@@ -104,7 +135,7 @@ Brief:
 - Topic: ${brief.topic}
 - Goal: ${brief.goal}
 - Audience: ${brief.audience}
-- CTA: ${brief.cta || preset.defaultCta}
+- CTA: ${finalCta}
 - Source notes: ${brief.source_notes || 'Not provided'}
 
 ${brandContext ? `Expert Brand DNA:\n${brandContext}\n` : ''}
@@ -112,12 +143,16 @@ ${brandContext ? `Expert Brand DNA:\n${brandContext}\n` : ''}
 Rules:
 - Write in pt-BR.
 - Create exactly 5 slides: 1 hook, 3 body slides, 1 CTA slide.
-- Each slide must be short enough for a visual editorial layout.
-- Hook: max 95 characters, strong and specific.
-- Body slides: max 75 characters each. Prefer one sentence. Use line breaks only when they improve rhythm.
-- CTA slide: max 90 characters.
-- Do not start slides with labels like "Passo 1", "Slide 2", "Etapa 3".
-- Avoid paragraphs, explanations, and generic motivational language.
+- Each slide must be structured for a premium editorial design.
+- Never put labels like "Passo 1" inside title/body; the layout already has slide numbers.
+- title is the visual headline. It must be short, sharp, and readable.
+- body is optional support text. Use it only when it adds clarity.
+- tagline is a tiny label, max 32 characters.
+- accent_text must be an exact word or short phrase that exists inside title. Pick the most interesting word/phrase to color. If nothing deserves emphasis, return an empty string.
+- Cover title: max 90 characters. Cover body: max 135 characters.
+- Body title: max 70 characters. Body body: max 170 characters.
+- CTA title: max 80 characters. CTA body: max 140 characters. CTA field: max 38 characters.
+- Avoid generic motivational language.
 - Make it feel like a sharp point of view from a real expert.
 - Include a readiness_score from 0 to 100.
 
@@ -131,22 +166,18 @@ Return ONLY a valid JSON object with this exact structure:
   "readiness_score": 82,
   "improvement_notes": ["One short note about what to improve before publishing"],
   "slides": [
-    {"type":"hook","text":"Slide 1 text"},
-    {"type":"body","text":"Slide 2 text"},
-    {"type":"body","text":"Slide 3 text"},
-    {"type":"body","text":"Slide 4 text"},
-    {"type":"body","text":"Slide 5 CTA text"}
+    {"type":"hook","tagline":"@expert","title":"Slide 1 title","body":"Optional support text","cta":"","accent_text":"exact title phrase"},
+    {"type":"body","tagline":"","title":"Slide 2 title","body":"Slide 2 body","cta":"","accent_text":"exact title phrase"},
+    {"type":"body","tagline":"","title":"Slide 3 title","body":"Slide 3 body","cta":"","accent_text":"exact title phrase"},
+    {"type":"body","tagline":"","title":"Slide 4 title","body":"Slide 4 body","cta":"","accent_text":"exact title phrase"},
+    {"type":"body","tagline":"próximo passo","title":"Slide 5 CTA title","body":"CTA body","cta":"${finalCta}","accent_text":"exact title phrase"}
   ],
   "caption": "A concise caption with a natural CTA and 3-5 relevant hashtags"
 }`;
 
   const text = await callAI(prompt);
-  const result = parseAIJson<Omit<ContentStrategy, 'slides'> & { slides: Array<{ type: 'hook' | 'body'; text: string }> }>(text, 'estratégia de conteúdo');
-  const slides = (result.slides || []).slice(0, 5).map((slide, index) => ({
-    type: index === 0 ? 'hook' as const : 'body' as const,
-    text: normalizeSlideText(slide.text, index),
-    image_url: '',
-  }));
+  const result = parseAIJson<Omit<ContentStrategy, 'slides'> & { slides: Array<Partial<Slide>> }>(text, 'estratégia de conteúdo');
+  const slides = (result.slides || []).slice(0, 5).map((slide, index) => normalizeStructuredSlide(slide, index, finalCta));
 
   return {
     ...result,

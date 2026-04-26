@@ -53,19 +53,13 @@ export default function MagicDNAModal({ open, onClose, onApply }: MagicDNAModalP
     if (preview) {
       onApply(preview);
       onClose();
-      // Reset state for next use
       setRawData('');
       setPreview(null);
     }
   }
 
   return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title="Gerar DNA com IA"
-      maxWidth="max-w-3xl"
-    >
+    <Modal open={open} onClose={onClose} title="Gerar DNA com IA" maxWidth="max-w-3xl">
       <div className="space-y-6">
         {!preview ? (
           <>
@@ -75,35 +69,25 @@ export default function MagicDNAModal({ open, onClose, onApply }: MagicDNAModalP
                 <div>
                   <p className="text-sm font-medium text-indigo-900">Como funciona?</p>
                   <p className="text-xs text-indigo-700 mt-1">
-                    Cole informações brutas sobre a marca, biografia, notas de reuniões ou um documento de estratégia. 
-                    A IA vai extrair automaticamente os pilares, público, tom de voz e muito mais.
+                    Cole informações sobre o expert, oferta, cases, crenças, método e bastidores. A IA vai extrair um Brand DNA mais útil para gerar conteúdo autoral.
                   </p>
                 </div>
               </div>
 
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <label className="text-sm font-medium text-slate-700">Informações brutos</label>
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="text-xs text-indigo-600 hover:text-indigo-700 font-medium flex items-center gap-1"
-                  >
+                  <label className="text-sm font-medium text-slate-700">Informações brutas</label>
+                  <button onClick={() => fileInputRef.current?.click()} className="text-xs text-indigo-600 hover:text-indigo-700 font-medium flex items-center gap-1">
                     <Upload className="w-3 h-3" />
                     Subir arquivo (.txt, .md)
                   </button>
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    onChange={handleFileUpload}
-                    accept=".txt,.md"
-                    className="hidden"
-                  />
+                  <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".txt,.md" className="hidden" />
                 </div>
                 <textarea
                   rows={8}
                   value={rawData}
                   onChange={(e) => setRawData(e.target.value)}
-                  placeholder="Cole aqui textos, notas, bios, ou qualquer material sobre a marca..."
+                  placeholder="Cole aqui bio, oferta, método, cases, posts antigos, crenças e qualquer material sobre o expert..."
                   className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
                 />
               </div>
@@ -117,17 +101,8 @@ export default function MagicDNAModal({ open, onClose, onApply }: MagicDNAModalP
             </div>
 
             <div className="flex justify-end gap-3 pt-2">
-              <button
-                onClick={onClose}
-                className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleGenerate}
-                disabled={generating || !rawData.trim()}
-                className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-5 py-2 rounded-lg font-semibold flex items-center gap-2 transition-colors"
-              >
+              <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">Cancelar</button>
+              <button onClick={handleGenerate} disabled={generating || !rawData.trim()} className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-5 py-2 rounded-lg font-semibold flex items-center gap-2 transition-colors">
                 {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
                 {generating ? 'Analisando...' : 'Gerar DNA'}
               </button>
@@ -141,15 +116,16 @@ export default function MagicDNAModal({ open, onClose, onApply }: MagicDNAModalP
                   <Check className="w-5 h-5 text-emerald-500" />
                   DNA Sugerido pela IA
                 </h4>
-                <button
-                  onClick={() => setPreview(null)}
-                  className="text-xs text-indigo-600 hover:underline"
-                >
-                  Tentar novamente
-                </button>
+                <button onClick={() => setPreview(null)} className="text-xs text-indigo-600 hover:underline">Tentar novamente</button>
               </div>
 
-              <div className="grid grid-cols-2 gap-4 max-h-[400px] overflow-y-auto p-1">
+              <div className="grid grid-cols-2 gap-4 max-h-[420px] overflow-y-auto p-1">
+                <PreviewField label="Promessa" value={preview.core_promise} />
+                <PreviewField label="Mecanismo" value={preview.unique_mechanism} />
+                <PreviewField label="Crenças" value={preview.beliefs} />
+                <PreviewField label="Oferta" value={preview.offer} />
+                <PreviewField label="Provas" value={preview.proof_points} />
+                <PreviewField label="Ângulos" value={preview.content_angles} />
                 <PreviewField label="Bio" value={preview.bio} />
                 <PreviewField label="Mercado" value={preview.market} />
                 <PreviewField label="Público-alvo" value={preview.target_audience} />
@@ -166,18 +142,8 @@ export default function MagicDNAModal({ open, onClose, onApply }: MagicDNAModalP
             </div>
 
             <div className="flex justify-end gap-3 pt-2">
-              <button
-                onClick={() => setPreview(null)}
-                className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
-              >
-                Voltar
-              </button>
-              <button
-                onClick={handleApply}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-lg font-semibold flex items-center gap-2 transition-colors"
-              >
-                Aplicar ao Projeto
-              </button>
+              <button onClick={() => setPreview(null)} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">Voltar</button>
+              <button onClick={handleApply} className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-lg font-semibold flex items-center gap-2 transition-colors">Aplicar ao Projeto</button>
             </div>
           </>
         )}

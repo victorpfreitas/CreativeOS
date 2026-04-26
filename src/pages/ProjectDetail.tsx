@@ -17,6 +17,13 @@ const EMPTY_DNA: BrandDNA = {
   brand_colors: '',
   visual_references: '',
   competitors: '',
+  core_promise: '',
+  unique_mechanism: '',
+  beliefs: '',
+  common_enemy: '',
+  offer: '',
+  proof_points: '',
+  content_angles: '',
 };
 
 interface SectionProps {
@@ -66,7 +73,7 @@ export default function ProjectDetail() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [openSections, setOpenSections] = useState({ profile: true, content: true, voice: false, visual: false });
+  const [openSections, setOpenSections] = useState({ expert: true, profile: true, content: true, voice: false, visual: false });
   const [magicModalOpen, setMagicModalOpen] = useState(false);
 
   useEffect(() => { if (id) load(); }, [id]);
@@ -77,7 +84,7 @@ export default function ProjectDetail() {
       if (!data) { navigate('/projects'); return; }
       setProject(data);
       setName(data.name);
-      setDna(data.brand_dna ?? EMPTY_DNA);
+      setDna({ ...EMPTY_DNA, ...(data.brand_dna ?? {}) });
     } catch (err) {
       console.error(err);
     } finally {
@@ -113,8 +120,8 @@ export default function ProjectDetail() {
       ...prev,
       ...generatedDna
     }));
-    // Open relevant sections to show the data
     setOpenSections({
+      expert: true,
       profile: true,
       content: true,
       voice: true,
@@ -135,7 +142,6 @@ export default function ProjectDetail() {
 
   return (
     <div className="space-y-6 pb-12">
-      {/* Header */}
       <header className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <Link to="/projects" className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-500">
@@ -147,7 +153,7 @@ export default function ProjectDetail() {
               onChange={(e) => setName(e.target.value)}
               className="text-2xl font-bold text-slate-900 bg-transparent border-b-2 border-transparent focus:border-indigo-500 focus:outline-none pr-2"
             />
-            <p className="text-sm text-slate-500 mt-0.5">Brand DNA &amp; Estratégia</p>
+            <p className="text-sm text-slate-500 mt-0.5">Brand DNA &amp; Sistema de Conteúdo</p>
           </div>
         </div>
         <button
@@ -160,18 +166,17 @@ export default function ProjectDetail() {
         </button>
       </header>
 
-      {/* Quick links */}
       <div className="grid grid-cols-3 gap-3">
         <Link
-          to={`/automations?project=${project.id}`}
+          to="/create"
           className="flex items-center gap-3 bg-white border border-slate-200 rounded-xl p-4 hover:border-indigo-300 hover:shadow-sm transition-all group"
         >
           <div className="w-9 h-9 bg-indigo-100 rounded-lg flex items-center justify-center group-hover:bg-indigo-200 transition-colors">
-            <Zap className="w-5 h-5 text-indigo-600" />
+            <Sparkles className="w-5 h-5 text-indigo-600" />
           </div>
           <div>
-            <p className="font-semibold text-slate-900 text-sm">Automações</p>
-            <p className="text-xs text-slate-500">Ver e criar</p>
+            <p className="font-semibold text-slate-900 text-sm">Criar Conteúdo</p>
+            <p className="text-xs text-slate-500">Brief guiado</p>
           </div>
         </Link>
         <Link
@@ -194,18 +199,17 @@ export default function ProjectDetail() {
             <Calendar className="w-5 h-5 text-purple-600" />
           </div>
           <div>
-            <p className="font-semibold text-slate-900 text-sm">Planejamento</p>
-            <p className="text-xs text-slate-500">Semana de conteúdo</p>
+            <p className="font-semibold text-slate-900 text-sm">Sistema Semanal</p>
+            <p className="text-xs text-slate-500">Backlog e rotina</p>
           </div>
         </Link>
       </div>
 
-      {/* Brand DNA hint */}
       <div className="flex items-start gap-3 bg-indigo-50 border border-indigo-200 rounded-xl p-4">
         <Sparkles className="w-5 h-5 text-indigo-500 flex-shrink-0 mt-0.5" />
         <div className="flex-1">
           <p className="text-sm text-indigo-800">
-            Quanto mais completo o Brand DNA, mais precisa é a geração de conteúdo. Essas informações são usadas pela IA em todos os carrosséis deste projeto.
+            Para experts, o Brand DNA precisa capturar promessa, método, crenças e provas. Esses campos alimentam o novo criador guiado e deixam o carrossel menos genérico.
           </p>
         </div>
         <button
@@ -217,149 +221,85 @@ export default function ProjectDetail() {
         </button>
       </div>
 
-      {/* Section: Perfil */}
       <Section
-        title="Perfil &amp; Mercado"
-        subtitle="Bio, link e posicionamento de mercado"
-        open={openSections.profile}
-        onToggle={() => toggleSection('profile')}
+        title="Expert & Oferta"
+        subtitle="Promessa, mecanismo, crenças e provas que tornam o conteúdo autoral"
+        open={openSections.expert}
+        onToggle={() => toggleSection('expert')}
       >
+        <Field label="Promessa central" hint="Qual transformação o expert promete entregar?">
+          <textarea rows={3} value={dna.core_promise || ''} onChange={(e) => set('core_promise', e.target.value)} placeholder="Ex: Ajudar experts a vender todos os dias com conteúdo estratégico, sem depender de dancinha ou trend." className={inputCls} />
+        </Field>
+        <Field label="Mecanismo único" hint="Método, framework ou forma própria de resolver o problema">
+          <input value={dna.unique_mechanism || ''} onChange={(e) => set('unique_mechanism', e.target.value)} placeholder="Ex: Método Conteúdo-Demanda, diagnóstico 3C, funil invisível..." className={inputCls} />
+        </Field>
+        <Field label="Crenças fortes" hint="Opiniões que diferenciam o expert do mercado">
+          <textarea rows={3} value={dna.beliefs || ''} onChange={(e) => set('beliefs', e.target.value)} placeholder="Ex: Conteúdo que só educa não vende. Autoridade nasce de ponto de vista, não de frequência." className={inputCls} />
+        </Field>
+        <Field label="Inimigo comum" hint="Mito, hábito ou dor que o expert combate">
+          <input value={dna.common_enemy || ''} onChange={(e) => set('common_enemy', e.target.value)} placeholder="Ex: conteúdo genérico, lançamentos cansativos, vender só por indicação..." className={inputCls} />
+        </Field>
+        <Field label="Oferta principal">
+          <textarea rows={2} value={dna.offer || ''} onChange={(e) => set('offer', e.target.value)} placeholder="Ex: mentoria de posicionamento, consultoria, curso, comunidade, imersão..." className={inputCls} />
+        </Field>
+        <Field label="Provas e credenciais" hint="Resultados, números, cases, experiência e autoridade real">
+          <textarea rows={3} value={dna.proof_points || ''} onChange={(e) => set('proof_points', e.target.value)} placeholder="Ex: +300 alunos, cases de faturamento, 12 anos de mercado, clientes relevantes..." className={inputCls} />
+        </Field>
+        <Field label="Ângulos recorrentes" hint="Temas e enquadramentos que sempre funcionam para esse expert">
+          <textarea rows={3} value={dna.content_angles || ''} onChange={(e) => set('content_angles', e.target.value)} placeholder="Ex: erros comuns, bastidores de cliente, antes/depois, mitos do mercado, frameworks práticos..." className={inputCls} />
+        </Field>
+      </Section>
+
+      <Section title="Perfil &amp; Mercado" subtitle="Bio, link e posicionamento de mercado" open={openSections.profile} onToggle={() => toggleSection('profile')}>
         <Field label="Bio" hint="Cole aqui a bio do perfil (Instagram, LinkedIn, etc.)">
-          <textarea
-            rows={3}
-            value={dna.bio}
-            onChange={(e) => set('bio', e.target.value)}
-            placeholder="Ex: Coach de produtividade para líderes. Ajudo executivos a recuperar 2h por dia sem abrir mão de resultados."
-            className={inputCls}
-          />
+          <textarea rows={3} value={dna.bio} onChange={(e) => set('bio', e.target.value)} placeholder="Ex: Coach de produtividade para líderes. Ajudo executivos a recuperar 2h por dia sem abrir mão de resultados." className={inputCls} />
         </Field>
         <Field label="Link da bio">
-          <input
-            type="url"
-            value={dna.bio_link}
-            onChange={(e) => set('bio_link', e.target.value)}
-            placeholder="https://..."
-            className={inputCls}
-          />
+          <input type="url" value={dna.bio_link} onChange={(e) => set('bio_link', e.target.value)} placeholder="https://..." className={inputCls} />
         </Field>
         <Field label="Mercado / Nicho" hint="Em que mercado atua? Quem são seus clientes?">
-          <input
-            type="text"
-            value={dna.market}
-            onChange={(e) => set('market', e.target.value)}
-            placeholder="Ex: Coaches de carreira para profissionais 30-45 anos, renda média-alta"
-            className={inputCls}
-          />
+          <input type="text" value={dna.market} onChange={(e) => set('market', e.target.value)} placeholder="Ex: Coaches de carreira para profissionais 30-45 anos, renda média-alta" className={inputCls} />
         </Field>
         <Field label="Concorrentes de referência" hint="Criadores ou marcas com quem compete ou se inspira">
-          <input
-            type="text"
-            value={dna.competitors}
-            onChange={(e) => set('competitors', e.target.value)}
-            placeholder="Ex: @fulano, @ciclano — conteúdo similar mas diferencia em X"
-            className={inputCls}
-          />
+          <input type="text" value={dna.competitors} onChange={(e) => set('competitors', e.target.value)} placeholder="Ex: @fulano, @ciclano — conteúdo similar mas diferencia em X" className={inputCls} />
         </Field>
       </Section>
 
-      {/* Section: Conteúdo */}
-      <Section
-        title="Estratégia de Conteúdo"
-        subtitle="Pilares, audiência e objetivos"
-        open={openSections.content}
-        onToggle={() => toggleSection('content')}
-      >
+      <Section title="Estratégia de Conteúdo" subtitle="Pilares, audiência e objetivos" open={openSections.content} onToggle={() => toggleSection('content')}>
         <Field label="Pilares de conteúdo" hint="3 a 5 temas principais dos posts (separados por vírgula)">
-          <input
-            type="text"
-            value={dna.content_pillars}
-            onChange={(e) => set('content_pillars', e.target.value)}
-            placeholder="Ex: Produtividade, Liderança, Mentalidade, Carreira, Rotina"
-            className={inputCls}
-          />
+          <input type="text" value={dna.content_pillars} onChange={(e) => set('content_pillars', e.target.value)} placeholder="Ex: Produtividade, Liderança, Mentalidade, Carreira, Rotina" className={inputCls} />
         </Field>
         <Field label="Audiência-alvo" hint="Descreva o seguidor/cliente ideal com detalhe">
-          <textarea
-            rows={3}
-            value={dna.target_audience}
-            onChange={(e) => set('target_audience', e.target.value)}
-            placeholder="Ex: Executivos entre 35-50 anos, líderes de equipe, sobrecarregados, que buscam performance sem burnout. Usam LinkedIn e Instagram. Tomam decisões baseadas em dados."
-            className={inputCls}
-          />
+          <textarea rows={3} value={dna.target_audience} onChange={(e) => set('target_audience', e.target.value)} placeholder="Ex: Executivos entre 35-50 anos, líderes de equipe, sobrecarregados, que buscam performance sem burnout." className={inputCls} />
         </Field>
       </Section>
 
-      {/* Section: Voz */}
-      <Section
-        title="Tom de Voz &amp; Mensagens"
-        subtitle="Como a marca se comunica"
-        open={openSections.voice}
-        onToggle={() => toggleSection('voice')}
-      >
+      <Section title="Tom de Voz &amp; Mensagens" subtitle="Como a marca se comunica" open={openSections.voice} onToggle={() => toggleSection('voice')}>
         <Field label="Tom de voz" hint="Como a marca fala? Quais adjetivos a descrevem?">
-          <input
-            type="text"
-            value={dna.tone_of_voice}
-            onChange={(e) => set('tone_of_voice', e.target.value)}
-            placeholder="Ex: Direto, provocador, inteligente. Evita jargões. Fala como um mentor experiente, não como um guru."
-            className={inputCls}
-          />
+          <input type="text" value={dna.tone_of_voice} onChange={(e) => set('tone_of_voice', e.target.value)} placeholder="Ex: Direto, provocador, inteligente. Evita jargões." className={inputCls} />
         </Field>
         <Field label="Mensagens-chave" hint="O que a marca nunca deixa de comunicar?">
-          <textarea
-            rows={3}
-            value={dna.key_messages}
-            onChange={(e) => set('key_messages', e.target.value)}
-            placeholder="Ex: Produtividade é sobre clareza, não velocidade. Líderes que desaceleram tomam melhores decisões. Resultados sustentáveis exigem sistemas, não força de vontade."
-            className={inputCls}
-          />
+          <textarea rows={3} value={dna.key_messages} onChange={(e) => set('key_messages', e.target.value)} placeholder="Ex: Produtividade é sobre clareza, não velocidade. Resultados sustentáveis exigem sistemas." className={inputCls} />
         </Field>
       </Section>
 
-      {/* Section: Visual */}
-      <Section
-        title="Identidade Visual"
-        subtitle="Cores, referências e estética"
-        open={openSections.visual}
-        onToggle={() => toggleSection('visual')}
-      >
+      <Section title="Identidade Visual" subtitle="Cores, referências e estética" open={openSections.visual} onToggle={() => toggleSection('visual')}>
         <Field label="Cores da marca">
-          <input
-            type="text"
-            value={dna.brand_colors}
-            onChange={(e) => set('brand_colors', e.target.value)}
-            placeholder="Ex: Azul petróleo (#1B4F72), dourado (#D4AC0D), branco"
-            className={inputCls}
-          />
+          <input type="text" value={dna.brand_colors} onChange={(e) => set('brand_colors', e.target.value)} placeholder="Ex: Azul petróleo (#1B4F72), dourado (#D4AC0D), branco" className={inputCls} />
         </Field>
         <Field label="Referências visuais" hint="Marcas ou criadores com estética que admira">
-          <input
-            type="text"
-            value={dna.visual_references}
-            onChange={(e) => set('visual_references', e.target.value)}
-            placeholder="Ex: Apple (minimalismo), @hubermanlab (sóbrio mas engajante), Harvard Business Review"
-            className={inputCls}
-          />
+          <input type="text" value={dna.visual_references} onChange={(e) => set('visual_references', e.target.value)} placeholder="Ex: Apple, Harvard Business Review, estética editorial sóbria" className={inputCls} />
         </Field>
       </Section>
 
-      {/* Save footer */}
       <div className="flex justify-end pt-2">
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-6 py-3 rounded-xl font-semibold flex items-center gap-2 transition-colors"
-        >
+        <button onClick={handleSave} disabled={saving} className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-6 py-3 rounded-xl font-semibold flex items-center gap-2 transition-colors">
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
           {saving ? 'Salvando...' : saved ? 'Salvo!' : 'Salvar Brand DNA'}
         </button>
       </div>
 
-      <MagicDNAModal
-        open={magicModalOpen}
-        onClose={() => setMagicModalOpen(false)}
-        onApply={handleApplyMagicDNA}
-      />
+      <MagicDNAModal open={magicModalOpen} onClose={() => setMagicModalOpen(false)} onApply={handleApplyMagicDNA} />
     </div>
   );
 }

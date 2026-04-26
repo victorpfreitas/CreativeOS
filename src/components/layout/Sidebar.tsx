@@ -1,13 +1,14 @@
 import { NavLink } from 'react-router-dom';
-import { Home, FolderGit2, Zap, Settings, Images, Film } from 'lucide-react';
+import { Home, FolderGit2, Zap, Settings, Images, Film, Sparkles } from 'lucide-react';
 
 export default function Sidebar() {
   const links = [
     { to: '/', icon: Home, label: 'Dashboard' },
-    { to: '/projects', icon: FolderGit2, label: 'Projects' },
-    { to: '/automations', icon: Zap, label: 'Automations' },
-    { to: '/collections', icon: Images, label: 'Collections' },
-    { to: '/gallery', icon: Film, label: 'Gallery' },
+    { to: '/create', icon: Sparkles, label: 'Criar Conteúdo' },
+    { to: '/projects', icon: FolderGit2, label: 'Experts' },
+    { to: '/automations', icon: Zap, label: 'Sistemas' },
+    { to: '/collections', icon: Images, label: 'Assets' },
+    { to: '/gallery', icon: Film, label: 'Carrosséis' },
   ];
 
   return (
@@ -31,7 +32,7 @@ export default function Sidebar() {
               className={({ isActive }) =>
                 `flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${
                   isActive 
-                    ? 'bg-white/10 text-white font-medium shadow-inner border border-white/5' 
+                    ? 'bg-white/10 text-white font-medium shadow-inner border border-white/5'
                     : 'hover:bg-white/5 hover:text-slate-200 transparent border border-transparent'
                 }`
               }

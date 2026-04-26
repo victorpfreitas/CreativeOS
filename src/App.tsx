@@ -5,6 +5,7 @@ import ProtectedRoute from './components/layout/ProtectedRoute';
 import { AuthProvider } from './lib/AuthContext';
 
 const Dashboard = lazy(() => import('./pages/Dashboard'));
+const CreateContent = lazy(() => import('./pages/CreateContent'));
 const Projects = lazy(() => import('./pages/Projects'));
 const ProjectDetail = lazy(() => import('./pages/ProjectDetail'));
 const ContentAnalysis = lazy(() => import('./pages/ContentAnalysis'));
@@ -83,6 +84,7 @@ function App() {
               <Route element={<ProtectedRoute />}>
                 <Route path="/" element={<AppLayout />}>
                   <Route index element={<Dashboard />} />
+                  <Route path="create" element={<CreateContent />} />
                   <Route path="projects" element={<Projects />} />
                   <Route path="projects/:id" element={<ProjectDetail />} />
                   <Route path="projects/:id/analysis" element={<ContentAnalysis />} />

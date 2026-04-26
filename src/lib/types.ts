@@ -13,6 +13,13 @@ export interface BrandDNA {
   brand_colors: string;
   visual_references: string;
   competitors: string;
+  core_promise?: string;
+  unique_mechanism?: string;
+  beliefs?: string;
+  common_enemy?: string;
+  offer?: string;
+  proof_points?: string;
+  content_angles?: string;
 }
 
 export interface Project {
@@ -58,17 +65,45 @@ export interface Slide {
   image_url: string;
 }
 
+export interface ContentBrief {
+  project_id?: string;
+  topic: string;
+  goal: string;
+  audience: string;
+  cta: string;
+  preset_id: string;
+  template_id: string;
+  source_notes?: string;
+}
+
+export interface ContentStrategy {
+  promise: string;
+  angle: string;
+  audience: string;
+  cta: string;
+  slide_outline: string[];
+  readiness_score: number;
+  improvement_notes: string[];
+  slides: Slide[];
+  caption: string;
+}
+
 export interface Slideshow {
   id: string;
   automation_id?: string;
   hook_id?: string;
-  status: 'draft' | 'scheduled' | 'published';
+  status: 'draft' | 'reviewing' | 'scheduled' | 'published' | 'exported';
   scheduled_for: string | null;
   slides: Slide[];
   caption: string;
   theme?: 'dark' | 'light' | 'vibrant' | 'minimal' | 'bold_gradient';
   watermark?: string;
   logo_url?: string;
+  brief?: ContentBrief;
+  content_angle?: string;
+  template_id?: string;
+  readiness_score?: number;
+  exported_at?: string | null;
   created_at: string;
   // Joined fields
   automation?: Automation;
@@ -122,6 +157,27 @@ export interface ContentPlan {
   week_start: string;
   items: ContentPlanItem[];
   created_at: string;
+}
+
+export interface ExpertContentPreset {
+  id: string;
+  label: string;
+  description: string;
+  goal: string;
+  defaultCta: string;
+  narrativePrompt: string;
+}
+
+export interface CarouselTemplate {
+  id: string;
+  name: string;
+  description: string;
+  theme: 'dark' | 'light' | 'vibrant' | 'minimal' | 'bold_gradient';
+  gradient: string;
+  accentColor: string;
+  textColor: string;
+  badge: string;
+  layout: 'editorial' | 'authority' | 'proof' | 'launch' | 'minimal';
 }
 
 // ============================================================

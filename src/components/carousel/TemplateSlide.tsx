@@ -43,26 +43,35 @@ function px(value: number, exportMode?: boolean, compact?: boolean) {
 }
 
 function getTextMetrics(text: string, variant: 'cover' | 'body' | 'cta', exportMode?: boolean, compact?: boolean) {
-  const clean = text.trim();
-  const length = clean.length;
-  const explicitLines = clean.split('\n').length;
-  const estimatedLines = Math.max(explicitLines, Math.ceil(length / (variant === 'cover' ? 24 : 34)));
-  let size = variant === 'cover' ? 96 : variant === 'cta' ? 58 : 44;
+  const length = text.trim().length;
+  let size = variant === 'cover' ? 96 : variant === 'cta' ? 62 : 54;
 
-  if (estimatedLines >= 9) size *= 0.48;
-  else if (estimatedLines >= 7) size *= 0.58;
-  else if (estimatedLines >= 5) size *= 0.72;
-  else if (estimatedLines >= 4) size *= 0.84;
+  if (variant === 'cover') {
+    if (length > 180) size = 58;
+    else if (length > 135) size = 66;
+    else if (length > 95) size = 76;
+  } else if (variant === 'cta') {
+    if (length > 160) size = 44;
+    else if (length > 110) size = 50;
+  } else {
+    if (length > 260) size = 38;
+    else if (length > 190) size = 42;
+    else if (length > 125) size = 47;
+  }
 
-  if (length > 260) size *= 0.58;
-  else if (length > 210) size *= 0.68;
-  else if (length > 165) size *= 0.78;
-  else if (length > 120) size *= 0.88;
+  const minimum = variant === 'cover' ? 22 : 16;
 
   return {
-    fontSize: `${Math.max(px(14, exportMode, compact), px(size, exportMode, compact))}px`,
-    lineHeight: variant === 'cover' ? 0.98 : 1.08,
+    fontSize: `${Math.max(px(minimum, exportMode, compact), px(size, exportMode, compact))}px`,
+    lineHeight: variant === 'cover' ? 0.98 : 1.12,
   };
+}
+
+function isTextTooLong(text: string, variant: 'cover' | 'body' | 'cta') {
+  const length = text.trim().length;
+  if (variant === 'cover') return length > 110;
+  if (variant === 'cta') return length > 100;
+  return length > 90;
 }
 
 function brandLabel(watermark?: string) {
@@ -105,6 +114,32 @@ function EditableText({
         cursor: 'text',
       }}
     />
+  );
+}
+
+function LengthWarning({ show, exportMode, compact }: { show: boolean; exportMode?: boolean; compact?: boolean }) {
+  if (!show || exportMode || compact) return null;
+
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        right: px(82),
+        bottom: px(110),
+        zIndex: 4,
+        border: '1px solid rgba(17,17,17,0.22)',
+        borderRadius: 999,
+        padding: '5px 10px',
+        background: 'rgba(244,240,230,0.9)',
+        color: '#111111',
+        fontSize: '10px',
+        fontWeight: 900,
+        letterSpacing: '-0.02em',
+        lineHeight: 1,
+      }}
+    >
+      texto longo
+    </div>
   );
 }
 
@@ -232,13 +267,11 @@ function CoverLayout(props: {
             textAlign: 'center',
             whiteSpace: 'pre-wrap',
             wordBreak: 'break-word',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
           }}
         />
       </div>
 
+      <LengthWarning show={!!editable && isTextTooLong(text, 'cover')} exportMode={exportMode} compact={compact} />
       <div style={{ position: 'absolute', bottom: px(82, exportMode, compact), left: 0, right: 0, textAlign: 'center', fontSize: `${Math.max(12, px(38, exportMode, compact))}px`, fontWeight: 900, lineHeight: 1, zIndex: 2 }}>→</div>
     </>
   );
@@ -261,7 +294,8 @@ function BodyLayout(props: {
   const { text, label, logoUrl, slideIndex, totalSlides, isCTA, system, editable, exportMode, compact, onTextChange } = props;
   const number = String(slideIndex + 1).padStart(2, '0');
   const total = String(totalSlides).padStart(2, '0');
-  const metrics = getTextMetrics(text, isCTA ? 'cta' : 'body', exportMode, compact);
+  const variant = isCTA ? 'cta' : 'body';
+  const metrics = getTextMetrics(text, variant, exportMode, compact);
 
   return (
     <>
@@ -307,6 +341,7 @@ function BodyLayout(props: {
 
       {logoUrl && <img src={logoUrl} alt="" style={{ position: 'absolute', left: px(82, exportMode, compact), bottom: px(78, exportMode, compact), maxWidth: px(140, exportMode, compact), maxHeight: px(44, exportMode, compact), objectFit: 'contain', zIndex: 2 }} />}
 
+      <LengthWarning show={!!editable && isTextTooLong(text, variant)} exportMode={exportMode} compact={compact} />
       <div
         style={{
           position: 'absolute',

@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Sparkles, X, Loader2, Upload, AlertCircle, FileText, Check } from 'lucide-react';
+import { Sparkles, Loader2, Upload, AlertCircle, Check } from 'lucide-react';
 import Modal from '../ui/Modal';
 import { generateBrandDNA } from '../../services/geminiService';
 import type { BrandDNA } from '../../lib/types';

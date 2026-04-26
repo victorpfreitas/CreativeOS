@@ -21,19 +21,20 @@ export default function AppLayout() {
         </div>
       </main>
       
-      {/* Top right auth widget */}
-      <div className="fixed top-6 right-6 flex items-center gap-4 bg-white/5 border border-white/10 backdrop-blur-md px-4 py-2 rounded-full shadow-2xl z-50">
-        <span className="text-sm font-medium text-slate-300">
-          {user?.email}
-        </span>
-        <button 
-          onClick={logOut}
-          className="p-2 hover:bg-white/10 rounded-full transition-colors text-slate-400 hover:text-white"
-          title="Sign Out"
-        >
-          <LogOut className="w-4 h-4" />
-        </button>
-      </div>
+      {!isEditor && (
+        <div className="fixed top-6 right-6 flex items-center gap-4 bg-white/5 border border-white/10 backdrop-blur-md px-4 py-2 rounded-full shadow-2xl z-50">
+          <span className="text-sm font-medium text-slate-300">
+            {user?.email}
+          </span>
+          <button
+            onClick={logOut}
+            className="p-2 hover:bg-white/10 rounded-full transition-colors text-slate-400 hover:text-white"
+            title="Sign Out"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

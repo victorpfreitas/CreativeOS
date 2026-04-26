@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Save, Loader2, Image as ImageIcon, Download, Copy, Check, Plus, Trash2, RefreshCw, ChevronUp, ChevronDown, Type, Palette } from 'lucide-react';
+import { ArrowLeft, Save, Loader2, Image as ImageIcon, Download, Copy, Check, Plus, Trash2, RefreshCw, ChevronLeft, ChevronRight, Type, Palette } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
 import type { Slideshow, Slide, ImageCollection } from '../lib/types';
 import { carouselTemplates, getCarouselTemplate } from '../lib/carouselTemplates';
@@ -27,6 +27,52 @@ function safeFileName(value: string) {
 
 function composeSlideText(slide: Slide) {
   return [slide.tagline, slide.title, slide.body, slide.cta].filter(Boolean).join('\n\n') || slide.text || '';
+}
+
+function SlideThumbnailPreview({
+  slideIndex,
+  totalSlides,
+  background,
+  text,
+  accent,
+}: {
+  slideIndex: number;
+  totalSlides: number;
+  background: string;
+  text: string;
+  accent: string;
+}) {
+  const isCover = slideIndex === 0;
+  const isCTA = slideIndex === totalSlides - 1 && !isCover;
+
+  return (
+    <div className="absolute inset-0 overflow-hidden" style={{ background }}>
+      <div
+        className="absolute inset-0 opacity-40"
+        style={{
+          backgroundImage: 'radial-gradient(circle at 20% 20%, rgba(0,0,0,0.12) 0 1px, transparent 1.2px)',
+          backgroundSize: '7px 7px',
+        }}
+      />
+      <div className="absolute left-[16%] right-[16%] top-[18%] flex items-center gap-1.5">
+        <span className="flex h-4 w-4 items-center justify-center rounded-full border text-[7px] font-black" style={{ borderColor: text, color: text }}>
+          {String(slideIndex + 1).padStart(2, '0')}
+        </span>
+        {!isCover && <span className="h-px flex-1" style={{ background: text }} />}
+      </div>
+      <div className={`absolute left-[16%] right-[16%] ${isCover ? 'top-[42%]' : 'top-[34%]'} space-y-1.5`}>
+        {isCover && <span className="block h-3 w-5 rounded-sm" style={{ background: accent }} />}
+        <span className="block h-2.5 rounded-sm" style={{ background: text }} />
+        <span className="block h-2.5 w-[86%] rounded-sm" style={{ background: text }} />
+        <span className="block h-2.5 w-[62%] rounded-sm" style={{ background: text }} />
+        {!isCover && !isCTA && <span className="mt-2 block h-1.5 w-[78%] rounded-sm opacity-60" style={{ background: text }} />}
+      </div>
+      <div className="absolute bottom-[13%] left-[16%] right-[16%] flex items-center justify-between">
+        <span className="h-1 w-7 rounded-full opacity-70" style={{ background: text }} />
+        <span className="h-1 w-4 rounded-full opacity-70" style={{ background: text }} />
+      </div>
+    </div>
+  );
 }
 
 function getEditableValue(slide: Slide, field: SlideTextField, slideIndex: number, totalSlides: number, watermark: string) {
@@ -184,8 +230,8 @@ export default function SlideshowEditor() {
     setSlideToDelete(null);
   }
 
-  function moveSlide(index: number, direction: 'up' | 'down') {
-    const target = direction === 'up' ? index - 1 : index + 1;
+  function moveSlide(index: number, direction: 'left' | 'right') {
+    const target = direction === 'left' ? index - 1 : index + 1;
     if (target < 0 || target >= slides.length) return;
 
     const updated = [...slides];
@@ -290,86 +336,47 @@ export default function SlideshowEditor() {
 
   return (
     <div className="h-full min-h-0 flex flex-col gap-4 overflow-hidden">
-      <header className="flex items-center justify-between px-2">
-        <div className="flex items-center gap-3">
+      <header className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-2">
+        <div className="flex min-w-0 items-center gap-3">
           <Link to={slideshow.automation_id ? `/automations/${slideshow.automation_id}` : '/gallery'} className="p-1.5 hover:bg-white/5 rounded-lg transition-colors text-slate-500">
             <ArrowLeft className="w-5 h-5" />
           </Link>
-          <div className="flex items-center gap-2 min-w-0">
+          <div className="flex min-w-0 items-center gap-2">
             <span className="bg-white/5 text-slate-300 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">Peça única</span>
-            <h1 className="text-lg font-bold text-white truncate max-w-[320px]">{slideshow.brief?.topic || slideshow.automation?.name || 'Carousel'}</h1>
+            <h1 className="min-w-0 truncate text-base font-bold text-white sm:text-lg">{slideshow.brief?.topic || slideshow.automation?.name || 'Carousel'}</h1>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex shrink-0 items-center gap-2 sm:gap-3">
           <button
             onClick={handleSave}
             disabled={saving}
-            className={`px-4 py-1.5 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${saved ? 'bg-emerald-600 text-white' : 'bg-white/5 hover:bg-white/10 text-white border border-white/10'}`}
+            className={`px-2.5 py-1.5 rounded-lg text-sm font-bold flex items-center gap-2 transition-all sm:px-4 ${saved ? 'bg-emerald-600 text-white' : 'bg-white/5 hover:bg-white/10 text-white border border-white/10'}`}
           >
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : saved ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
-            {saving ? '...' : saved ? 'Salvo' : 'Salvar'}
+            <span className="hidden sm:inline">{saving ? '...' : saved ? 'Salvo' : 'Salvar'}</span>
           </button>
 
           <button
             onClick={handleExport}
             disabled={exporting}
-            className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-4 py-1.5 rounded-lg text-sm font-bold flex items-center gap-2 transition-all shadow-lg shadow-indigo-600/20"
+            className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-2.5 py-1.5 rounded-lg text-sm font-bold flex items-center gap-2 transition-all shadow-lg shadow-indigo-600/20 sm:px-4"
           >
             {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-            {exporting ? '...' : 'Exportar'}
+            <span className="hidden sm:inline">{exporting ? '...' : 'Exportar'}</span>
           </button>
         </div>
       </header>
 
-      <div className="flex-1 min-h-0 flex overflow-hidden gap-4">
-        <aside className="w-64 min-h-0 flex flex-col gap-4 overflow-hidden">
-          <div className="flex items-center justify-between px-2">
-            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Slides ({slides.length})</h3>
-            <button onClick={addSlide} className="p-1 hover:bg-white/5 rounded text-indigo-400 hover:text-indigo-300 transition-colors" title="Adicionar slide">
-              <Plus className="w-4 h-4" />
-            </button>
-          </div>
-          <div ref={scrollContainerRef} className="flex-1 overflow-y-auto pr-2 space-y-3 custom-scrollbar">
-            {slides.map((s, i) => (
-              <div
-                key={i}
-                onClick={() => scrollToSlide(i)}
-                className={`group relative aspect-[4/5] rounded-xl overflow-hidden cursor-pointer border-2 transition-all ${currentSlide === i ? 'border-indigo-500 ring-2 ring-indigo-500/20' : 'border-white/5 hover:border-white/20'}`}
-              >
-                <TemplateSlide slide={s} slideIndex={i} totalSlides={slides.length} templateId={templateId} watermark={watermark} logoUrl={logoUrl} fontPresetId={fontPresetId} colorPaletteId={colorPaletteId} accentColor={accentColor || selectedPalette.accent} compact />
-                <div className={`absolute top-2 left-2 w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-bold ${currentSlide === i ? 'bg-indigo-500 text-white' : 'bg-black/60 text-slate-300'}`}>
-                  {i + 1}
-                </div>
-                <div className="absolute top-2 right-2 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                  {s.type !== 'hook' && (
-                    <button onClick={(e) => { e.stopPropagation(); confirmDeleteSlide(i); }} className="p-1.5 bg-red-500 hover:bg-red-600 text-white rounded-lg shadow-lg" title="Remover slide">
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                  {i > 0 && (
-                    <button onClick={(e) => { e.stopPropagation(); moveSlide(i, 'up'); }} className="p-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow-lg" title="Mover para cima">
-                      <ChevronUp className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                  {i < slides.length - 1 && (
-                    <button onClick={(e) => { e.stopPropagation(); moveSlide(i, 'down'); }} className="p-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow-lg" title="Mover para baixo">
-                      <ChevronDown className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </aside>
-
-        <main className="flex-1 min-w-0 min-h-0 bg-[#111111] rounded-3xl border border-white/5 flex flex-col items-center justify-center relative group overflow-hidden">
-          <div className="absolute top-6 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-black/40 backdrop-blur-md px-3 py-1 rounded-full border border-white/10 z-20">
+      <div className="flex-1 min-h-0 grid grid-cols-[minmax(0,1fr)_18rem] gap-4 overflow-hidden 2xl:grid-cols-[minmax(0,1fr)_20rem]">
+        <div className="min-w-0 min-h-0 flex flex-col gap-3 overflow-hidden">
+          <main className="flex-1 min-w-0 min-h-0 bg-[#111111] rounded-xl border border-white/5 flex flex-col items-center justify-center relative group overflow-hidden p-5">
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-black/40 backdrop-blur-md px-3 py-1 rounded-full border border-white/10 z-20">
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{currentSlide + 1} / {slides.length}</span>
             <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest ml-2">{selectedTemplate.name}</span>
           </div>
 
-          <div className="relative w-full max-w-[450px] aspect-[4/5] rounded-2xl shadow-[0_30px_100px_rgba(0,0,0,0.5)] overflow-hidden transition-all duration-500">
+          <div className="relative aspect-[4/5] h-full max-h-[min(66vh,560px)] w-auto max-w-full rounded-xl shadow-[0_30px_100px_rgba(0,0,0,0.5)] overflow-hidden transition-all duration-500">
             <TemplateSlide
               slide={slide}
               slideIndex={currentSlide}
@@ -400,15 +407,62 @@ export default function SlideshowEditor() {
             </div>
           </div>
 
-          <button onClick={() => scrollToSlide(currentSlide - 1)} disabled={currentSlide === 0} className="absolute left-4 top-1/2 -translate-y-1/2 p-3 bg-white/5 hover:bg-white/10 rounded-full text-white disabled:opacity-10 transition-all border border-white/5">
-            <ChevronUp className="-rotate-90 w-6 h-6" />
+          <button onClick={() => scrollToSlide(currentSlide - 1)} disabled={currentSlide === 0} className="absolute left-4 top-1/2 -translate-y-1/2 p-3 bg-white/5 hover:bg-white/10 rounded-full text-white disabled:opacity-10 transition-all border border-white/5" title="Slide anterior">
+            <ChevronLeft className="w-6 h-6" />
           </button>
-          <button onClick={() => scrollToSlide(currentSlide + 1)} disabled={currentSlide === slides.length - 1} className="absolute right-4 top-1/2 -translate-y-1/2 p-3 bg-white/5 hover:bg-white/10 rounded-full text-white disabled:opacity-10 transition-all border border-white/5">
-            <ChevronUp className="rotate-90 w-6 h-6" />
+          <button onClick={() => scrollToSlide(currentSlide + 1)} disabled={currentSlide === slides.length - 1} className="absolute right-4 top-1/2 -translate-y-1/2 p-3 bg-white/5 hover:bg-white/10 rounded-full text-white disabled:opacity-10 transition-all border border-white/5" title="Proximo slide">
+            <ChevronRight className="w-6 h-6" />
           </button>
-        </main>
+          </main>
 
-        <aside className="w-72 min-h-0 flex flex-col gap-4 overflow-y-auto pr-2 custom-scrollbar">
+          <div className="h-36 shrink-0 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3">
+            <div className="mb-2 flex items-center justify-between">
+              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Slides ({slides.length})</h3>
+              <button onClick={addSlide} className="p-1.5 hover:bg-white/5 rounded-lg text-indigo-400 hover:text-indigo-300 transition-colors" title="Adicionar slide">
+                <Plus className="w-4 h-4" />
+              </button>
+            </div>
+            <div ref={scrollContainerRef} className="flex h-[92px] gap-3 overflow-x-auto overflow-y-hidden pb-1 custom-scrollbar">
+              {slides.map((s, i) => (
+                <div
+                  key={i}
+                  onClick={() => scrollToSlide(i)}
+                  className={`group relative h-full aspect-[4/5] shrink-0 rounded-lg overflow-hidden cursor-pointer border-2 transition-all ${currentSlide === i ? 'border-indigo-500 ring-2 ring-indigo-500/20' : 'border-white/5 hover:border-white/20'}`}
+                >
+                  <SlideThumbnailPreview
+                    slideIndex={i}
+                    totalSlides={slides.length}
+                    background={selectedPalette.background}
+                    text={selectedPalette.text}
+                    accent={accentColor || selectedPalette.accent}
+                  />
+                  <div className={`absolute top-1.5 left-1.5 w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-bold ${currentSlide === i ? 'bg-indigo-500 text-white' : 'bg-black/60 text-slate-300'}`}>
+                    {i + 1}
+                  </div>
+                  <div className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                    {i > 0 && (
+                      <button onClick={(e) => { e.stopPropagation(); moveSlide(i, 'left'); }} className="p-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md shadow-lg" title="Mover para esquerda">
+                        <ChevronLeft className="w-3 h-3" />
+                      </button>
+                    )}
+                    {i < slides.length - 1 && (
+                      <button onClick={(e) => { e.stopPropagation(); moveSlide(i, 'right'); }} className="p-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md shadow-lg" title="Mover para direita">
+                        <ChevronRight className="w-3 h-3" />
+                      </button>
+                    )}
+                    {s.type !== 'hook' && (
+                      <button onClick={(e) => { e.stopPropagation(); confirmDeleteSlide(i); }} className="p-1 bg-red-500 hover:bg-red-600 text-white rounded-md shadow-lg" title="Remover slide">
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <aside className="w-full min-h-0 flex flex-col gap-4 overflow-y-auto pr-2 custom-scrollbar">
           <div className="bg-white/5 border border-white/10 rounded-2xl p-5 space-y-6">
             <div>
               <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Direção de arte</h4>

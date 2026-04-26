@@ -9,7 +9,7 @@ import Modal from '../components/ui/Modal';
 import TemplateSlide, { getSlideReadabilityWarning } from '../components/carousel/TemplateSlide';
 import { toPng } from 'html-to-image';
 import JSZip from 'jszip';
-import { regenerateSlide } from '../services/geminiService';
+import { regenerateCarousel, regenerateSlide } from '../services/geminiService';
 
 const SLIDE_W = 1080;
 const SLIDE_H = 1350;
@@ -57,6 +57,7 @@ export default function SlideshowEditor() {
   const [exporting, setExporting] = useState(false);
   const [copied, setCopied] = useState(false);
   const [regenSlide, setRegenSlide] = useState(false);
+  const [regenAll, setRegenAll] = useState(false);
 
   const [bgModalOpen, setBgModalOpen] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -121,14 +122,18 @@ export default function SlideshowEditor() {
     }
   }
 
-  function updateSlideText(index: number, text: string) {
-    setSlides((prev) => prev.map((s, i) => i === index ? { ...s, title: text, text: composeSlideText({ ...s, title: text }) } : s));
-  }
-
   function updateSlideField(index: number, field: SlideTextField, value: string) {
     setSlides((prev) => prev.map((s, i) => {
       if (i !== index) return s;
       const next = { ...s, [field]: value };
+      return { ...next, text: composeSlideText(next) };
+    }));
+  }
+
+  function updateSlideContent(index: number, patch: Partial<Slide>) {
+    setSlides((prev) => prev.map((s, i) => {
+      if (i !== index) return s;
+      const next = { ...s, ...patch };
       return { ...next, text: composeSlideText(next) };
     }));
   }
@@ -193,22 +198,53 @@ export default function SlideshowEditor() {
   async function handleRegenSlide() {
     if (!slideshow) return;
     const automation = slideshow.automation;
-    const hookSlide = slides.find((s) => s.type === 'hook');
     setRegenSlide(true);
     try {
       const newText = await regenerateSlide({
         slideIndex: currentSlide,
-        currentText: slides[currentSlide].title || slides[currentSlide].text,
-        hookText: hookSlide?.title || hookSlide?.text || '',
+        currentSlide: slides[currentSlide],
+        slides,
+        carouselTitle: slideshow.brief?.topic || slideshow.automation?.name || '',
         niche: automation?.niche || slideshow.brief?.topic || '',
         narrativePrompt: automation?.narrative_prompt || slideshow.content_angle || '',
+        formatPrompt: automation?.format_prompt,
+        softCta: automation?.soft_cta || slideshow.brief?.cta,
         knowledgeBase: automation?.project?.knowledge_base,
+        brandDNA: automation?.project?.brand_dna,
+        watermark,
       });
-      updateSlideText(currentSlide, newText);
+      updateSlideContent(currentSlide, newText);
     } catch (err) {
       console.error(err);
     } finally {
       setRegenSlide(false);
+    }
+  }
+
+  async function handleRegenAllSlides() {
+    if (!slideshow) return;
+    const automation = slideshow.automation;
+    setRegenAll(true);
+    try {
+      const result = await regenerateCarousel({
+        slides,
+        carouselTitle: slideshow.brief?.topic || slideshow.automation?.name || '',
+        niche: automation?.niche || slideshow.brief?.topic || '',
+        narrativePrompt: automation?.narrative_prompt || slideshow.content_angle || '',
+        formatPrompt: automation?.format_prompt,
+        softCta: automation?.soft_cta || slideshow.brief?.cta,
+        knowledgeBase: automation?.project?.knowledge_base,
+        brandDNA: automation?.project?.brand_dna,
+        watermark,
+        caption,
+      });
+      setSlides(result.slides);
+      if (result.caption) setCaption(result.caption);
+      slideRefs.current = new Array(result.slides.length).fill(null);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setRegenAll(false);
     }
   }
 
@@ -503,9 +539,13 @@ export default function SlideshowEditor() {
             </div>
 
             <div className="pt-4 border-t border-white/5">
-              <button onClick={handleRegenSlide} disabled={regenSlide} className="w-full bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all">
+              <button onClick={handleRegenSlide} disabled={regenSlide || regenAll} className="w-full bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all">
                 {regenSlide ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
                 Regenerar Texto com IA
+              </button>
+              <button onClick={handleRegenAllSlides} disabled={regenSlide || regenAll} className="mt-2 w-full bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all">
+                {regenAll ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                Reescrever carrossel inteiro
               </button>
             </div>
           </div>

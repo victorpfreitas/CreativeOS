@@ -87,6 +87,46 @@ function normalizeStructuredSlide(slide: Partial<Slide>, index: number, fallback
   return { ...next, text: composeSlideText(next) };
 }
 
+function normalizeRegeneratedSlide(slide: Partial<Slide>, currentSlide: Slide, slideIndex: number, totalSlides: number): Partial<Slide> {
+  const isCTA = slideIndex === totalSlides - 1 && slideIndex !== 0;
+  const title = compactText(slide.title) || normalizeSlideText(slide.text || currentSlide.title || currentSlide.text || '', slideIndex);
+  const body = compactText(slide.body);
+  const tagline = compactText(slide.tagline);
+  const cta = isCTA ? compactText(slide.cta) || compactText(currentSlide.cta) : compactText(slide.cta);
+  const rawAccent = compactText(slide.accent_text);
+  const accentText = rawAccent && title.toLocaleLowerCase().includes(rawAccent.toLocaleLowerCase()) ? rawAccent : '';
+  const next: Partial<Slide> = {
+    tagline,
+    title,
+    body,
+    cta,
+    accent_text: accentText,
+  };
+  return { ...next, text: composeSlideText({ ...currentSlide, ...next }) };
+}
+
+function describeCarousel(slides: Slide[]) {
+  return slides.map((slide, index) => {
+    const role = index === 0 || slide.type === 'hook' ? 'hook' : index === slides.length - 1 ? 'cta' : 'body';
+    return `${index + 1}. ${role}: ${composeSlideText(slide)}`;
+  }).join('\n\n');
+}
+
+function normalizeRegeneratedSlides(slides: Array<Partial<Slide>>, currentSlides: Slide[], fallbackCta?: string): Slide[] {
+  return currentSlides.map((currentSlide, index) => {
+    const patch = normalizeRegeneratedSlide(slides[index] || {}, currentSlide, index, currentSlides.length);
+    const isCTA = index === currentSlides.length - 1 && index !== 0;
+    const next = {
+      ...currentSlide,
+      ...patch,
+      cta: isCTA ? patch.cta || currentSlide.cta || fallbackCta || '' : patch.cta || '',
+      image_url: currentSlide.image_url,
+      type: index === 0 ? 'hook' : currentSlide.type,
+    };
+    return { ...next, text: composeSlideText(next) };
+  });
+}
+
 // ---- Brand DNA Compiler ----
 
 export function compileBrandDNA(dna: BrandDNA): string {
@@ -280,31 +320,168 @@ Return ONLY the JSON object.`;
 
 export async function regenerateSlide(params: {
   slideIndex: number;
-  currentText: string;
-  hookText: string;
+  currentSlide: Slide;
+  slides: Slide[];
+  carouselTitle?: string;
   niche: string;
   narrativePrompt: string;
+  formatPrompt?: string;
+  softCta?: string;
   knowledgeBase?: string;
-}): Promise<string> {
-  const { slideIndex, currentText, hookText, niche, narrativePrompt, knowledgeBase } = params;
+  brandDNA?: BrandDNA;
+  watermark?: string;
+}): Promise<Partial<Slide>> {
+  const {
+    slideIndex,
+    currentSlide,
+    slides,
+    carouselTitle,
+    niche,
+    narrativePrompt,
+    formatPrompt,
+    softCta,
+    knowledgeBase,
+    brandDNA,
+    watermark,
+  } = params;
+  const brandContext = brandDNA ? compileBrandDNA(brandDNA) : knowledgeBase;
+  const isCover = slideIndex === 0 || currentSlide.type === 'hook';
+  const isCTA = slideIndex === slides.length - 1 && !isCover;
+  const currentText = composeSlideText(currentSlide);
+  const carouselMap = describeCarousel(slides);
 
-  const prompt = `You are an editorial Instagram carousel writer.
+  const prompt = `You are an editorial Instagram carousel writer and ghostwriter for high-ticket experts.
 
 Rewrite slide ${slideIndex + 1} of a carousel about the niche "${niche}".
 
-The carousel hook (slide 1) is: "${hookText}"
-Current text of slide ${slideIndex + 1}: "${currentText}"
+Carousel title/topic: ${carouselTitle || 'Not provided'}
+
+Full carousel context:
+${carouselMap}
+
+Current slide ${slideIndex + 1}:
+${currentText}
 
 Narrative style: ${narrativePrompt}
-${knowledgeBase ? `Brand knowledge base:\n${knowledgeBase}\n` : ''}
+${formatPrompt ? `Format rules: ${formatPrompt}\n` : ''}
+${softCta ? `Preferred CTA: ${softCta}\n` : ''}
+${brandContext ? `Expert Brand DNA / voice source:\n${brandContext}\n` : ''}
 
-Write a better version of this slide in pt-BR. Keep it punchy and visually readable.
-Max 75 characters. Do not use labels like "Passo", "Slide", or "Etapa".
+Ghostwriting rules:
+- Write in pt-BR.
+- Preserve the expert's voice, beliefs, vocabulary, market position, promises, enemies, proof points, and recurring angles.
+- If the Brand DNA and the generic narrative style conflict, prioritize the Brand DNA.
+- Make it sound like the expert wrote it, not like generic marketing copy.
+- Keep the same strategic role of this slide inside the carousel.
+- Improve clarity, specificity, rhythm, and slide readability.
+- Do not repeat what another slide already says.
+- Do not use labels like "Passo", "Slide", "Etapa", "Dica 1" or numbering inside title/body.
+- Avoid generic motivational language, hype, and filler.
 
-Return ONLY the new slide text, no JSON, no quotes, no explanation.`;
+Manifesto Papel formatting rules:
+- Return structured content for the visual slots.
+- tagline is a tiny editorial label, max 32 characters. For cover, use "${watermark || '@expert'}" when it fits.
+- title is the main visual headline. It must be short, sharp, and easy to read.
+- body supports the title with concrete explanation. Use line breaks only when they improve rhythm.
+- accent_text must be an exact word or short phrase that exists inside title.
+- ${isCover ? 'Cover title max 90 characters. Cover body max 135 characters.' : isCTA ? 'CTA title max 80 characters. CTA body max 140 characters. CTA field max 38 characters.' : 'Body title max 70 characters. Body body max 170 characters.'}
+- Prefer one strong idea per slide.
+
+Return ONLY valid JSON with this exact structure:
+{
+  "tagline": "tiny label",
+  "title": "visual headline",
+  "body": "support text",
+  "cta": "${isCTA ? 'visual CTA text' : ''}",
+  "accent_text": "exact title phrase"
+}`;
 
   const text = await callAI(prompt);
-  return normalizeSlideText(cleanJsonText(text).replace(/^"|"$/g, '').trim(), slideIndex);
+  const result = parseAIJson<Partial<Slide>>(text, 'reescrita do slide');
+  return normalizeRegeneratedSlide(result, currentSlide, slideIndex, slides.length);
+}
+
+export async function regenerateCarousel(params: {
+  slides: Slide[];
+  carouselTitle?: string;
+  niche: string;
+  narrativePrompt: string;
+  formatPrompt?: string;
+  softCta?: string;
+  knowledgeBase?: string;
+  brandDNA?: BrandDNA;
+  watermark?: string;
+  caption?: string;
+}): Promise<{ slides: Slide[]; caption?: string }> {
+  const {
+    slides,
+    carouselTitle,
+    niche,
+    narrativePrompt,
+    formatPrompt,
+    softCta,
+    knowledgeBase,
+    brandDNA,
+    watermark,
+    caption,
+  } = params;
+  const brandContext = brandDNA ? compileBrandDNA(brandDNA) : knowledgeBase;
+  const carouselMap = describeCarousel(slides);
+
+  const prompt = `You are an editorial Instagram carousel writer and ghostwriter for high-ticket experts.
+
+Rewrite the entire carousel about the niche "${niche}".
+
+Carousel title/topic: ${carouselTitle || 'Not provided'}
+
+Current carousel:
+${carouselMap}
+
+Current caption:
+${caption || 'Not provided'}
+
+Narrative style: ${narrativePrompt}
+${formatPrompt ? `Format rules: ${formatPrompt}\n` : ''}
+${softCta ? `Preferred CTA: ${softCta}\n` : ''}
+${brandContext ? `Expert Brand DNA / voice source:\n${brandContext}\n` : ''}
+
+Ghostwriting rules:
+- Write in pt-BR.
+- Preserve the expert's voice, beliefs, vocabulary, market position, promises, enemies, proof points, and recurring angles.
+- If the Brand DNA and the generic narrative style conflict, prioritize the Brand DNA.
+- Make it sound like the expert wrote it, not like generic marketing copy.
+- Deliver a complete carousel with a clear hook, progressive body slides, and a final CTA.
+- Keep the same number of slides: exactly ${slides.length}.
+- Do not repeat the same idea across slides.
+- Do not use labels like "Passo", "Slide", "Etapa", "Dica 1" or numbering inside title/body.
+- Avoid generic motivational language, hype, and filler.
+
+Manifesto Papel formatting rules:
+- Every slide must return structured content for tagline, title, body, cta, and accent_text.
+- tagline is a tiny editorial label, max 32 characters. Cover tagline should use "${watermark || '@expert'}" when it fits.
+- title is the main visual headline. It must be short, sharp, and easy to read.
+- body supports the title with concrete explanation. Use line breaks only when they improve rhythm.
+- accent_text is mandatory when a strong highlight exists. It must be an exact word or short phrase that exists inside title. Choose the word/phrase most worth coloring visually.
+- Cover title max 90 characters. Cover body max 135 characters.
+- Body title max 70 characters. Body body max 170 characters.
+- CTA title max 80 characters. CTA body max 140 characters. CTA field max 38 characters.
+- Prefer one strong idea per slide.
+
+Return ONLY valid JSON with this exact structure:
+{
+  "slides": [
+    {"type":"hook","tagline":"@expert","title":"visual headline","body":"support text","cta":"","accent_text":"exact title phrase"},
+    {"type":"body","tagline":"","title":"visual headline","body":"support text","cta":"","accent_text":"exact title phrase"}
+  ],
+  "caption": "caption in the same expert voice, with a natural CTA and 3-5 relevant hashtags"
+}`;
+
+  const text = await callAI(prompt);
+  const result = parseAIJson<{ slides: Array<Partial<Slide>>; caption?: string }>(text, 'reescrita do carrossel');
+  return {
+    slides: normalizeRegeneratedSlides(Array.isArray(result.slides) ? result.slides : [], slides, softCta),
+    caption: compactText(result.caption),
+  };
 }
 
 // ---- Analyze Content ----

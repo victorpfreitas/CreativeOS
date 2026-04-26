@@ -54,16 +54,16 @@ function getTextMetrics(text: string, variant: 'cover' | 'body' | 'cta', exportM
     if (length > 160) size = 44;
     else if (length > 110) size = 50;
   } else {
-    if (length > 260) size = 38;
-    else if (length > 190) size = 42;
-    else if (length > 125) size = 47;
+    if (length > 260) size = 44;
+    else if (length > 190) size = 46;
+    else if (length > 125) size = 50;
   }
 
-  const minimum = variant === 'cover' ? 22 : 16;
+  const minimum = variant === 'cover' ? 26 : variant === 'body' ? 22 : 20;
 
   return {
     fontSize: `${Math.max(px(minimum, exportMode, compact), px(size, exportMode, compact))}px`,
-    lineHeight: variant === 'cover' ? 0.98 : 1.12,
+    lineHeight: variant === 'cover' ? 0.98 : 1.14,
   };
 }
 
@@ -109,7 +109,8 @@ function EditableText({
         padding: 0,
         margin: 0,
         resize: 'none',
-        overflow: 'hidden',
+        overflowY: 'auto',
+        overflowX: 'hidden',
         boxSizing: 'border-box',
         cursor: 'text',
       }}

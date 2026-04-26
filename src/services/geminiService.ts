@@ -1,23 +1,52 @@
 // ============================================================
-// Made by Human — Gemini AI Service
+// Made by Human — AI Service
 // ============================================================
 
-import type { BrandDNA, ContentAnalysis, ContentPlanItem } from '../lib/types';
+import type { BrandDNA, ContentAnalysis, ContentBrief, ContentPlanItem, ContentStrategy } from '../lib/types';
+import { getExpertContentPreset } from '../lib/contentPresets';
 
 async function callAI(prompt: string): Promise<string> {
-  const response = await fetch('/api/ai', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prompt }),
-  });
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 45000);
 
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({ error: 'Unknown error' }));
-    throw new Error(err.error || `AI API error: ${response.status}`);
+  try {
+    const response = await fetch('/api/ai', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt }),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ error: 'Falha ao chamar a IA.' }));
+      throw new Error(err.error || `AI API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    if (!data.text || typeof data.text !== 'string') {
+      throw new Error('A IA respondeu sem conteúdo. Tente novamente.');
+    }
+    return data.text;
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new Error('A IA demorou demais para responder. Tente novamente com um brief mais curto.');
+    }
+    throw err;
+  } finally {
+    window.clearTimeout(timeout);
   }
+}
 
-  const data = await response.json();
-  return data.text;
+function cleanJsonText(text: string): string {
+  return text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+}
+
+function parseAIJson<T>(text: string, label: string): T {
+  try {
+    return JSON.parse(cleanJsonText(text)) as T;
+  } catch {
+    throw new Error(`A IA retornou um formato inválido para ${label}. Tente gerar novamente.`);
+  }
 }
 
 // ---- Brand DNA Compiler ----
@@ -34,7 +63,87 @@ export function compileBrandDNA(dna: BrandDNA): string {
   if (dna.brand_colors) parts.push(`Cores da marca: ${dna.brand_colors}`);
   if (dna.visual_references) parts.push(`Referências visuais: ${dna.visual_references}`);
   if (dna.competitors) parts.push(`Concorrentes (para se diferenciar): ${dna.competitors}`);
+  if (dna.core_promise) parts.push(`Promessa central: ${dna.core_promise}`);
+  if (dna.unique_mechanism) parts.push(`Mecanismo único: ${dna.unique_mechanism}`);
+  if (dna.beliefs) parts.push(`Crenças fortes: ${dna.beliefs}`);
+  if (dna.common_enemy) parts.push(`Inimigo comum / problema combatido: ${dna.common_enemy}`);
+  if (dna.offer) parts.push(`Oferta principal: ${dna.offer}`);
+  if (dna.proof_points) parts.push(`Provas e credenciais: ${dna.proof_points}`);
+  if (dna.content_angles) parts.push(`Ângulos recorrentes: ${dna.content_angles}`);
   return parts.join('\n');
+}
+
+// ---- Generate Expert Content Strategy ----
+
+export async function generateContentStrategy(params: {
+  brief: ContentBrief;
+  brandDNA?: BrandDNA;
+  knowledgeBase?: string;
+}): Promise<ContentStrategy> {
+  const { brief, brandDNA, knowledgeBase } = params;
+  const preset = getExpertContentPreset(brief.preset_id);
+  const brandContext = brandDNA ? compileBrandDNA(brandDNA) : knowledgeBase;
+
+  const prompt = `You are a senior content strategist and carousel writer for high-ticket experts and infoproduct creators.
+
+Create a premium, ready-to-review Instagram carousel strategy and draft.
+
+Content preset: ${preset.label}
+Preset goal: ${preset.goal}
+Preset narrative style: ${preset.narrativePrompt}
+
+Brief:
+- Topic: ${brief.topic}
+- Goal: ${brief.goal}
+- Audience: ${brief.audience}
+- CTA: ${brief.cta || preset.defaultCta}
+- Source notes: ${brief.source_notes || 'Not provided'}
+
+${brandContext ? `Expert Brand DNA:\n${brandContext}\n` : ''}
+
+Rules:
+- Write in pt-BR.
+- Make the hook specific, opinionated, and valuable.
+- Avoid generic motivational content.
+- The carousel must feel like it came from a real expert with a point of view.
+- Create 6 slides: 1 hook, 4 body slides, 1 CTA slide.
+- Each slide must be concise and visually readable.
+- Include a readiness_score from 0 to 100 based on specificity, brand fit, clarity, and publish readiness.
+
+Return ONLY a valid JSON object with this exact structure:
+{
+  "promise": "The main promise of this carousel",
+  "angle": "The strategic angle or point of view",
+  "audience": "Who this is for",
+  "cta": "The final call to action",
+  "slide_outline": ["Slide 1 role", "Slide 2 role", "Slide 3 role", "Slide 4 role", "Slide 5 role", "Slide 6 role"],
+  "readiness_score": 82,
+  "improvement_notes": ["One short note about what to improve before publishing"],
+  "slides": [
+    {"type":"hook","text":"Slide 1 text"},
+    {"type":"body","text":"Slide 2 text"},
+    {"type":"body","text":"Slide 3 text"},
+    {"type":"body","text":"Slide 4 text"},
+    {"type":"body","text":"Slide 5 text"},
+    {"type":"body","text":"Slide 6 CTA text"}
+  ],
+  "caption": "A concise caption with a natural CTA and 3-5 relevant hashtags"
+}`;
+
+  const text = await callAI(prompt);
+  const result = parseAIJson<Omit<ContentStrategy, 'slides'> & { slides: Array<{ type: 'hook' | 'body'; text: string }> }>(text, 'estratégia de conteúdo');
+
+  return {
+    ...result,
+    readiness_score: Math.max(0, Math.min(100, Number(result.readiness_score) || 0)),
+    improvement_notes: Array.isArray(result.improvement_notes) ? result.improvement_notes : [],
+    slide_outline: Array.isArray(result.slide_outline) ? result.slide_outline : [],
+    slides: (result.slides || []).map((slide, index) => ({
+      type: index === 0 ? 'hook' : 'body',
+      text: slide.text || '',
+      image_url: '',
+    })),
+  };
 }
 
 // ---- Generate Hooks ----
@@ -64,12 +173,7 @@ Return a JSON array of strings. Example:
 Return ONLY the JSON array, no other text.`;
 
   const text = await callAI(prompt);
-  try {
-    const hooks: string[] = JSON.parse(text);
-    return hooks;
-  } catch {
-    throw new Error('AI returned invalid JSON for hooks. Please try again.');
-  }
+  return parseAIJson<string[]>(text, 'hooks');
 }
 
 // ---- Generate Slideshow ----
@@ -127,12 +231,7 @@ Return a JSON object with this exact structure:
 Return ONLY the JSON object.`;
 
   const text = await callAI(prompt);
-  try {
-    const result = JSON.parse(text);
-    return result;
-  } catch {
-    throw new Error('AI returned invalid JSON for slideshow. Please try again.');
-  }
+  return parseAIJson<{ slides: GeneratedSlide[]; caption: string }>(text, 'carrossel');
 }
 
 // ---- Regenerate Single Slide ----
@@ -162,7 +261,7 @@ Write a better version of this slide. Keep it concise (max 3 short lines), punch
 Return ONLY the new slide text, no JSON, no quotes, no explanation.`;
 
   const text = await callAI(prompt);
-  return text.trim();
+  return cleanJsonText(text).replace(/^"|"$/g, '').trim();
 }
 
 // ---- Analyze Content ----
@@ -190,38 +289,18 @@ Based on this data, generate a comprehensive analysis in ${language}.
 Return a JSON object with this exact structure:
 {
   "summary": "2-3 sentences summarizing overall content performance and main finding",
-  "best_performers": [
-    "Description of top performing content and WHY it worked (pattern, format, topic, hook style)",
-    "..."
-  ],
-  "worst_performers": [
-    "Description of underperforming content and WHY it failed",
-    "..."
-  ],
-  "patterns": [
-    "Specific pattern identified (e.g. posts about X get 3x more saves than posts about Y)",
-    "..."
-  ],
-  "recommendations": [
-    "Concrete recommendation based on data (e.g. Double down on topic X, avoid format Y)",
-    "..."
-  ],
-  "content_ideas": [
-    "Specific content idea inspired by what worked",
-    "..."
-  ]
+  "best_performers": ["Description of top performing content and WHY it worked"],
+  "worst_performers": ["Description of underperforming content and WHY it failed"],
+  "patterns": ["Specific pattern identified"],
+  "recommendations": ["Concrete recommendation based on data"],
+  "content_ideas": ["Specific content idea inspired by what worked"]
 }
 
 Include at least 3 items in each array. Be specific and actionable.
 Return ONLY the JSON object.`;
 
   const text = await callAI(prompt);
-  try {
-    const result = JSON.parse(text);
-    return result;
-  } catch {
-    throw new Error('AI returned invalid JSON for analysis. Please try again.');
-  }
+  return parseAIJson<ContentAnalysis['insights']>(text, 'análise');
 }
 
 // ---- Generate Weekly Plan ----
@@ -270,13 +349,9 @@ Return a JSON array with this exact structure:
 Return ONLY the JSON array. Include exactly ${weekDays.length} items, one per posting day.`;
 
   const text = await callAI(prompt);
-  try {
-    const result: ContentPlanItem[] = JSON.parse(text);
-    return result;
-  } catch {
-    throw new Error('AI returned invalid JSON for weekly plan. Please try again.');
-  }
+  return parseAIJson<ContentPlanItem[]>(text, 'planejamento semanal');
 }
+
 // ---- Generate Brand DNA ----
 
 export async function generateBrandDNA(params: {
@@ -285,7 +360,7 @@ export async function generateBrandDNA(params: {
 }): Promise<BrandDNA> {
   const { rawData, language = 'pt-BR' } = params;
 
-  const prompt = `You are a branding and marketing strategist.
+  const prompt = `You are a branding and marketing strategist for experts and infoproduct creators.
 
 Analyze the following raw information about a brand/creator and extract a structured Brand DNA.
 
@@ -303,21 +378,23 @@ Return a JSON object with this exact structure:
   "market": "The primary niche and target market",
   "content_pillars": "3-5 key content topics, comma-separated",
   "target_audience": "Detailed description of the ideal follower/customer",
-  "tone_of_voice": "Description of how the brand communicates (adjectives and style)",
+  "tone_of_voice": "Description of how the brand communicates",
   "key_messages": "Core messages the brand always communicates",
   "brand_colors": "Suggested or identified brand colors",
   "visual_references": "Identified or suggested visual styles/references",
-  "competitors": "Potential competitors or reference creators in the niche"
+  "competitors": "Potential competitors or reference creators in the niche",
+  "core_promise": "The central transformation this expert promises",
+  "unique_mechanism": "The named or implied method/mechanism behind the transformation",
+  "beliefs": "Strong beliefs or contrarian points of view",
+  "common_enemy": "The problem, myth, habit, or market enemy the expert fights against",
+  "offer": "Primary offer, product, service, or next step",
+  "proof_points": "Credentials, results, cases, numbers, or trust signals",
+  "content_angles": "Recurring content angles that would fit this expert"
 }
 
 Be specific, strategic, and professional.
 Return ONLY the JSON object.`;
 
   const text = await callAI(prompt);
-  try {
-    const result: BrandDNA = JSON.parse(text);
-    return result;
-  } catch {
-    throw new Error('AI returned invalid JSON for Brand DNA. Please try again.');
-  }
+  return parseAIJson<BrandDNA>(text, 'Brand DNA');
 }

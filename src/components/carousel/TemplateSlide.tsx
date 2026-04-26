@@ -42,6 +42,16 @@ function px(value: number, exportMode?: boolean, compact?: boolean) {
   return Math.round(value * getScale(exportMode, compact));
 }
 
+function getMinimumTextSize(variant: 'cover' | 'body' | 'cta', exportMode?: boolean, compact?: boolean) {
+  if (variant === 'cover') return px(26, exportMode, compact);
+  if (variant === 'body') {
+    if (compact) return px(36, exportMode, compact);
+    return exportMode ? 42 : 24;
+  }
+  if (compact) return px(28, exportMode, compact);
+  return exportMode ? 34 : 18;
+}
+
 function getTextMetrics(text: string, variant: 'cover' | 'body' | 'cta', exportMode?: boolean, compact?: boolean) {
   const length = text.trim().length;
   let size = variant === 'cover' ? 96 : variant === 'cta' ? 62 : 54;
@@ -59,10 +69,8 @@ function getTextMetrics(text: string, variant: 'cover' | 'body' | 'cta', exportM
     else if (length > 125) size = 50;
   }
 
-  const minimum = variant === 'cover' ? 26 : variant === 'body' ? 22 : 20;
-
   return {
-    fontSize: `${Math.max(px(minimum, exportMode, compact), px(size, exportMode, compact))}px`,
+    fontSize: `${Math.max(getMinimumTextSize(variant, exportMode, compact), px(size, exportMode, compact))}px`,
     lineHeight: variant === 'cover' ? 0.98 : 1.14,
   };
 }

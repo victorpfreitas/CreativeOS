@@ -146,10 +146,9 @@ export default function SlideshowEditor() {
   }
 
   function moveSlide(index: number, direction: 'up' | 'down') {
-    if (slides[index].type === 'hook' && direction === 'up') return;
     const target = direction === 'up' ? index - 1 : index + 1;
     if (target < 0 || target >= slides.length) return;
-    if (slides[target].type === 'hook') return;
+
     const updated = [...slides];
     [updated[index], updated[target]] = [updated[target], updated[index]];
     setSlides(updated);
@@ -274,7 +273,7 @@ export default function SlideshowEditor() {
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   )}
-                  {i > 0 && s.type !== 'hook' && (
+                  {i > 0 && (
                     <button onClick={(e) => { e.stopPropagation(); moveSlide(i, 'up'); }} className="p-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow-lg" title="Mover para cima">
                       <ChevronUp className="w-3.5 h-3.5" />
                     </button>

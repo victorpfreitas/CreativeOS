@@ -1,4 +1,4 @@
-import type { CSSProperties, FormEvent } from 'react';
+import type { CSSProperties } from 'react';
 import type { Slide } from '../../lib/types';
 import { getCarouselTemplate } from '../../lib/carouselTemplates';
 
@@ -19,7 +19,6 @@ interface VisualSystem {
   bg: string;
   ink: string;
   muted: string;
-  inverse: string;
   font: string;
   displayFont: string;
   texture: string;
@@ -29,10 +28,9 @@ const paperSystem: VisualSystem = {
   bg: '#f4f0e6',
   ink: '#111111',
   muted: '#57534a',
-  inverse: '#f4f0e6',
   font: 'Inter, Arial, sans-serif',
   displayFont: 'Inter, Arial Black, Arial, sans-serif',
-  texture: 'radial-gradient(circle at 20% 20%, rgba(0,0,0,0.085) 0 1px, transparent 1.2px), radial-gradient(circle at 80% 70%, rgba(0,0,0,0.055) 0 1px, transparent 1.2px)',
+  texture: 'radial-gradient(circle at 20% 20%, rgba(0,0,0,0.075) 0 1px, transparent 1.2px), radial-gradient(circle at 80% 70%, rgba(0,0,0,0.045) 0 1px, transparent 1.2px)',
 };
 
 function getScale(exportMode?: boolean, compact?: boolean) {
@@ -47,22 +45,23 @@ function px(value: number, exportMode?: boolean, compact?: boolean) {
 function getTextMetrics(text: string, variant: 'cover' | 'body' | 'cta', exportMode?: boolean, compact?: boolean) {
   const clean = text.trim();
   const length = clean.length;
-  const lines = clean.split('\n').length;
-  let size = variant === 'cover' ? 116 : variant === 'cta' ? 78 : 56;
-  let lineHeight = variant === 'cover' ? 0.88 : 1.06;
+  const explicitLines = clean.split('\n').length;
+  const estimatedLines = Math.max(explicitLines, Math.ceil(length / (variant === 'cover' ? 24 : 34)));
+  let size = variant === 'cover' ? 96 : variant === 'cta' ? 58 : 44;
 
-  if (length > 260) size *= 0.46;
-  else if (length > 210) size *= 0.54;
-  else if (length > 165) size *= 0.64;
-  else if (length > 120) size *= 0.76;
-  else if (length > 82) size *= 0.88;
+  if (estimatedLines >= 9) size *= 0.48;
+  else if (estimatedLines >= 7) size *= 0.58;
+  else if (estimatedLines >= 5) size *= 0.72;
+  else if (estimatedLines >= 4) size *= 0.84;
 
-  if (lines > 6) size *= 0.72;
-  else if (lines > 4) size *= 0.84;
+  if (length > 260) size *= 0.58;
+  else if (length > 210) size *= 0.68;
+  else if (length > 165) size *= 0.78;
+  else if (length > 120) size *= 0.88;
 
   return {
-    fontSize: `${Math.max(px(24, exportMode, compact), px(size, exportMode, compact))}px`,
-    lineHeight,
+    fontSize: `${Math.max(px(14, exportMode, compact), px(size, exportMode, compact))}px`,
+    lineHeight: variant === 'cover' ? 0.98 : 1.08,
   };
 }
 
@@ -85,24 +84,27 @@ function EditableText({
     return <div style={style}>{value}</div>;
   }
 
-  function handleInput(event: FormEvent<HTMLDivElement>) {
-    onTextChange?.(event.currentTarget.innerText);
-  }
-
   return (
-    <div
-      contentEditable
-      suppressContentEditableWarning
-      onInput={handleInput}
+    <textarea
+      value={value}
+      onChange={(event) => onTextChange?.(event.target.value)}
+      spellCheck={false}
       style={{
         ...style,
-        minHeight: '1em',
+        width: '100%',
+        height: '100%',
+        minHeight: '100%',
+        background: 'transparent',
+        border: 0,
+        outline: 0,
+        padding: 0,
+        margin: 0,
+        resize: 'none',
+        overflow: 'hidden',
+        boxSizing: 'border-box',
         cursor: 'text',
-        outline: 'none',
       }}
-    >
-      {value}
-    </div>
+    />
   );
 }
 
@@ -143,7 +145,7 @@ export default function TemplateSlide({
           inset: 0,
           backgroundImage: system.texture,
           backgroundSize: exportMode ? '32px 32px' : compact ? '7px 7px' : '15px 15px',
-          opacity: 0.32,
+          opacity: 0.3,
         }}
       />
 
@@ -193,25 +195,29 @@ function CoverLayout(props: {
 
   return (
     <>
-      <div style={{ position: 'absolute', top: px(86, exportMode, compact), left: 0, right: 0, display: 'flex', justifyContent: 'center' }}>
+      <div style={{ position: 'absolute', top: px(82, exportMode, compact), left: 0, right: 0, display: 'flex', justifyContent: 'center', zIndex: 2 }}>
         <div
           style={{
             border: `${Math.max(1, px(2, exportMode, compact))}px solid ${system.ink}`,
             borderRadius: 999,
-            padding: `${px(9, exportMode, compact)}px ${px(30, exportMode, compact)}px`,
-            fontSize: `${Math.max(7, px(22, exportMode, compact))}px`,
+            padding: `${px(9, exportMode, compact)}px ${px(28, exportMode, compact)}px`,
+            fontSize: `${Math.max(7, px(20, exportMode, compact))}px`,
             fontWeight: 900,
-            letterSpacing: '-0.04em',
+            letterSpacing: '-0.035em',
             lineHeight: 1,
+            maxWidth: '76%',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
           }}
         >
           {label}
         </div>
       </div>
 
-      {logoUrl && <img src={logoUrl} alt="" style={{ position: 'absolute', top: px(78, exportMode, compact), right: px(82, exportMode, compact), maxWidth: px(150, exportMode, compact), maxHeight: px(52, exportMode, compact), objectFit: 'contain' }} />}
+      {logoUrl && <img src={logoUrl} alt="" style={{ position: 'absolute', top: px(78, exportMode, compact), right: px(82, exportMode, compact), maxWidth: px(150, exportMode, compact), maxHeight: px(52, exportMode, compact), objectFit: 'contain', zIndex: 2 }} />}
 
-      <div style={{ position: 'absolute', left: px(88, exportMode, compact), right: px(88, exportMode, compact), top: '23%', bottom: '19%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ position: 'absolute', left: px(86, exportMode, compact), right: px(86, exportMode, compact), top: '25%', bottom: '21%', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1 }}>
         <EditableText
           value={text}
           editable={editable}
@@ -222,15 +228,18 @@ function CoverLayout(props: {
             fontSize: metrics.fontSize,
             fontWeight: 950,
             lineHeight: metrics.lineHeight,
-            letterSpacing: '-0.065em',
+            letterSpacing: '-0.045em',
             textAlign: 'center',
             whiteSpace: 'pre-wrap',
             wordBreak: 'break-word',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
           }}
         />
       </div>
 
-      <div style={{ position: 'absolute', bottom: px(82, exportMode, compact), left: 0, right: 0, textAlign: 'center', fontSize: `${Math.max(12, px(42, exportMode, compact))}px`, fontWeight: 900, lineHeight: 1 }}>→</div>
+      <div style={{ position: 'absolute', bottom: px(82, exportMode, compact), left: 0, right: 0, textAlign: 'center', fontSize: `${Math.max(12, px(38, exportMode, compact))}px`, fontWeight: 900, lineHeight: 1, zIndex: 2 }}>→</div>
     </>
   );
 }
@@ -256,20 +265,20 @@ function BodyLayout(props: {
 
   return (
     <>
-      <div style={{ position: 'absolute', top: px(78, exportMode, compact), left: px(82, exportMode, compact), right: px(82, exportMode, compact), display: 'flex', alignItems: 'center', gap: px(18, exportMode, compact) }}>
+      <div style={{ position: 'absolute', top: px(78, exportMode, compact), left: px(82, exportMode, compact), right: px(82, exportMode, compact), display: 'flex', alignItems: 'center', gap: px(18, exportMode, compact), zIndex: 2 }}>
         <div
           style={{
-            width: px(80, exportMode, compact),
-            height: px(80, exportMode, compact),
-            minWidth: px(80, exportMode, compact),
+            width: px(76, exportMode, compact),
+            height: px(76, exportMode, compact),
+            minWidth: px(76, exportMode, compact),
             border: `${Math.max(1, px(2, exportMode, compact))}px solid ${system.ink}`,
             borderRadius: '50%',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             fontWeight: 950,
-            fontSize: `${Math.max(7, px(24, exportMode, compact))}px`,
-            letterSpacing: '-0.04em',
+            fontSize: `${Math.max(7, px(22, exportMode, compact))}px`,
+            letterSpacing: '-0.035em',
           }}
         >
           {number}
@@ -277,7 +286,7 @@ function BodyLayout(props: {
         <div style={{ flex: 1, height: Math.max(1, px(2, exportMode, compact)), background: system.ink }} />
       </div>
 
-      <div style={{ position: 'absolute', top: px(208, exportMode, compact), left: px(82, exportMode, compact), right: px(82, exportMode, compact), bottom: px(188, exportMode, compact), display: 'flex', alignItems: isCTA ? 'center' : 'flex-start' }}>
+      <div style={{ position: 'absolute', top: px(188, exportMode, compact), left: px(82, exportMode, compact), right: px(82, exportMode, compact), bottom: px(154, exportMode, compact), display: 'flex', alignItems: isCTA ? 'center' : 'flex-start', zIndex: 1 }}>
         <EditableText
           value={text}
           editable={editable}
@@ -288,17 +297,15 @@ function BodyLayout(props: {
             fontSize: metrics.fontSize,
             fontWeight: 900,
             lineHeight: metrics.lineHeight,
-            letterSpacing: '-0.055em',
+            letterSpacing: '-0.035em',
             textAlign: 'left',
             whiteSpace: 'pre-wrap',
             wordBreak: 'break-word',
-            maxHeight: '100%',
-            overflow: 'hidden',
           }}
         />
       </div>
 
-      {logoUrl && <img src={logoUrl} alt="" style={{ position: 'absolute', left: px(82, exportMode, compact), bottom: px(78, exportMode, compact), maxWidth: px(140, exportMode, compact), maxHeight: px(44, exportMode, compact), objectFit: 'contain' }} />}
+      {logoUrl && <img src={logoUrl} alt="" style={{ position: 'absolute', left: px(82, exportMode, compact), bottom: px(78, exportMode, compact), maxWidth: px(140, exportMode, compact), maxHeight: px(44, exportMode, compact), objectFit: 'contain', zIndex: 2 }} />}
 
       <div
         style={{
@@ -310,10 +317,11 @@ function BodyLayout(props: {
           alignItems: 'center',
           justifyContent: 'space-between',
           color: system.muted,
-          fontSize: `${Math.max(6, px(20, exportMode, compact))}px`,
+          fontSize: `${Math.max(6, px(18, exportMode, compact))}px`,
           fontWeight: 850,
-          letterSpacing: '-0.04em',
+          letterSpacing: '-0.035em',
           lineHeight: 1,
+          zIndex: 2,
         }}
       >
         <span>{isCTA ? 'proximo passo' : label}</span>

@@ -61,6 +61,13 @@ function joinSlideText(slide: Slide) {
   return [slide.tagline, slide.title, slide.body, slide.cta].filter(Boolean).join('\n\n') || slide.text || '';
 }
 
+function cleanLegacyText(text: string) {
+  return text
+    .replace(/^\s*(passo|slide|etapa)\s*\d+\s*[:.)-]\s*/i, '')
+    .replace(/^\s*(passo|slide|etapa)\d+\s*[:.)-]\s*/i, '')
+    .trim();
+}
+
 function splitLegacyText(text: string) {
   return text
     .split(/\n+/)
@@ -69,15 +76,24 @@ function splitLegacyText(text: string) {
 }
 
 function splitFirstSentence(text: string) {
-  const match = text.match(/^(.{36,110}?[.!?])\s+(.+)$/s);
+  const match = text.match(/^(.{36,130}?[.!?])\s+(.+)$/s);
   if (!match) return null;
   return { title: match[1].trim(), body: match[2].trim() };
 }
 
+function splitLongLegacyText(text: string) {
+  const words = text.split(/\s+/).filter(Boolean);
+  if (words.length < 14) return null;
+  const title = words.slice(0, 8).join(' ');
+  const body = words.slice(8).join(' ');
+  return { title, body };
+}
+
 function getSlideContent(slide: Slide, isCover: boolean, isCTA: boolean, label: string): SlideContent {
-  const legacyText = (slide.text || '').trim();
+  const legacyText = cleanLegacyText(slide.text || '');
   const lines = splitLegacyText(legacyText);
   const sentenceSplit = splitFirstSentence(legacyText);
+  const longSplit = splitLongLegacyText(legacyText);
   const hasStructuredContent = Boolean(slide.tagline || slide.title || slide.body || slide.cta || slide.accent_text);
 
   if (hasStructuredContent) {
@@ -91,20 +107,22 @@ function getSlideContent(slide: Slide, isCover: boolean, isCTA: boolean, label: 
   }
 
   if (isCover) {
+    const fallback = lines.length > 1 ? { title: lines[0], body: lines.slice(1).join('\n') } : sentenceSplit || longSplit;
     return {
       tagline: label,
-      title: lines[0] || legacyText || 'Uma ideia forte comeca aqui',
-      body: lines.slice(1).join('\n') || '',
+      title: fallback?.title || legacyText || 'Uma ideia forte comeca aqui',
+      body: fallback?.body || '',
       cta: '',
       accentText: '',
     };
   }
 
   if (isCTA) {
+    const fallback = lines.length > 1 ? { title: lines[0], body: lines.slice(1).join('\n') } : sentenceSplit || longSplit;
     return {
       tagline: 'proximo passo',
-      title: lines[0] || legacyText || 'Pronto para transformar isso em conteudo?',
-      body: lines.slice(1).join('\n') || '',
+      title: fallback?.title || legacyText || 'Pronto para transformar isso em conteudo?',
+      body: fallback?.body || '',
       cta: '',
       accentText: '',
     };
@@ -120,11 +138,12 @@ function getSlideContent(slide: Slide, isCover: boolean, isCTA: boolean, label: 
     };
   }
 
-  if (sentenceSplit) {
+  if (sentenceSplit || longSplit) {
+    const fallback = sentenceSplit || longSplit!;
     return {
       tagline: '',
-      title: sentenceSplit.title,
-      body: sentenceSplit.body,
+      title: fallback.title,
+      body: fallback.body,
       cta: '',
       accentText: '',
     };
@@ -430,8 +449,7 @@ function CoverLayout(props: {
             textAlign: 'center',
             whiteSpace: 'pre-wrap',
             wordBreak: 'break-word',
-            textWrap: 'balance',
-          } as CSSProperties}
+          }}
         />
 
         {content.body && (
@@ -526,8 +544,7 @@ function BodyLayout(props: {
             textAlign: 'left',
             whiteSpace: 'pre-wrap',
             wordBreak: 'break-word',
-            textWrap: 'balance',
-          } as CSSProperties}
+          }}
         />
 
         {content.body && (

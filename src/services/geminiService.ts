@@ -49,6 +49,14 @@ function parseAIJson<T>(text: string, label: string): T {
   }
 }
 
+function normalizeSlideText(text: string, index: number): string {
+  return (text || '')
+    .replace(/^\s*(passo|slide|etapa)\s*\d+\s*[:.)-]\s*/i, '')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim() || (index === 0 ? 'Uma ideia forte começa aqui' : 'Escreva este slide');
+}
+
 // ---- Brand DNA Compiler ----
 
 export function compileBrandDNA(dna: BrandDNA): string {
@@ -84,9 +92,9 @@ export async function generateContentStrategy(params: {
   const preset = getExpertContentPreset(brief.preset_id);
   const brandContext = brandDNA ? compileBrandDNA(brandDNA) : knowledgeBase;
 
-  const prompt = `You are a senior content strategist and carousel writer for high-ticket experts and infoproduct creators.
+  const prompt = `You are a senior content strategist and editorial carousel writer for high-ticket experts and infoproduct creators.
 
-Create a premium, ready-to-review Instagram carousel strategy and draft.
+Create one premium Instagram carousel in a black/off-white manifesto style. Think editorial poster, not corporate slide deck.
 
 Content preset: ${preset.label}
 Preset goal: ${preset.goal}
@@ -103,12 +111,15 @@ ${brandContext ? `Expert Brand DNA:\n${brandContext}\n` : ''}
 
 Rules:
 - Write in pt-BR.
-- Make the hook specific, opinionated, and valuable.
-- Avoid generic motivational content.
-- The carousel must feel like it came from a real expert with a point of view.
-- Create 6 slides: 1 hook, 4 body slides, 1 CTA slide.
-- Each slide must be concise and visually readable.
-- Include a readiness_score from 0 to 100 based on specificity, brand fit, clarity, and publish readiness.
+- Create exactly 5 slides: 1 hook, 3 body slides, 1 CTA slide.
+- Each slide must be short enough for a visual editorial layout.
+- Hook: max 95 characters, strong and specific.
+- Body slides: max 75 characters each. Prefer one sentence. Use line breaks only when they improve rhythm.
+- CTA slide: max 90 characters.
+- Do not start slides with labels like "Passo 1", "Slide 2", "Etapa 3".
+- Avoid paragraphs, explanations, and generic motivational language.
+- Make it feel like a sharp point of view from a real expert.
+- Include a readiness_score from 0 to 100.
 
 Return ONLY a valid JSON object with this exact structure:
 {
@@ -116,7 +127,7 @@ Return ONLY a valid JSON object with this exact structure:
   "angle": "The strategic angle or point of view",
   "audience": "Who this is for",
   "cta": "The final call to action",
-  "slide_outline": ["Slide 1 role", "Slide 2 role", "Slide 3 role", "Slide 4 role", "Slide 5 role", "Slide 6 role"],
+  "slide_outline": ["Slide 1 role", "Slide 2 role", "Slide 3 role", "Slide 4 role", "Slide 5 role"],
   "readiness_score": 82,
   "improvement_notes": ["One short note about what to improve before publishing"],
   "slides": [
@@ -124,25 +135,25 @@ Return ONLY a valid JSON object with this exact structure:
     {"type":"body","text":"Slide 2 text"},
     {"type":"body","text":"Slide 3 text"},
     {"type":"body","text":"Slide 4 text"},
-    {"type":"body","text":"Slide 5 text"},
-    {"type":"body","text":"Slide 6 CTA text"}
+    {"type":"body","text":"Slide 5 CTA text"}
   ],
   "caption": "A concise caption with a natural CTA and 3-5 relevant hashtags"
 }`;
 
   const text = await callAI(prompt);
   const result = parseAIJson<Omit<ContentStrategy, 'slides'> & { slides: Array<{ type: 'hook' | 'body'; text: string }> }>(text, 'estratégia de conteúdo');
+  const slides = (result.slides || []).slice(0, 5).map((slide, index) => ({
+    type: index === 0 ? 'hook' as const : 'body' as const,
+    text: normalizeSlideText(slide.text, index),
+    image_url: '',
+  }));
 
   return {
     ...result,
     readiness_score: Math.max(0, Math.min(100, Number(result.readiness_score) || 0)),
     improvement_notes: Array.isArray(result.improvement_notes) ? result.improvement_notes : [],
-    slide_outline: Array.isArray(result.slide_outline) ? result.slide_outline : [],
-    slides: (result.slides || []).map((slide, index) => ({
-      type: index === 0 ? 'hook' : 'body',
-      text: slide.text || '',
-      image_url: '',
-    })),
+    slide_outline: Array.isArray(result.slide_outline) ? result.slide_outline.slice(0, 5) : [],
+    slides,
   };
 }
 
@@ -246,7 +257,7 @@ export async function regenerateSlide(params: {
 }): Promise<string> {
   const { slideIndex, currentText, hookText, niche, narrativePrompt, knowledgeBase } = params;
 
-  const prompt = `You are a TikTok/Instagram content writer.
+  const prompt = `You are an editorial Instagram carousel writer.
 
 Rewrite slide ${slideIndex + 1} of a carousel about the niche "${niche}".
 
@@ -256,12 +267,13 @@ Current text of slide ${slideIndex + 1}: "${currentText}"
 Narrative style: ${narrativePrompt}
 ${knowledgeBase ? `Brand knowledge base:\n${knowledgeBase}\n` : ''}
 
-Write a better version of this slide. Keep it concise (max 3 short lines), punchy, and consistent with the hook and narrative style.
+Write a better version of this slide in pt-BR. Keep it punchy and visually readable.
+Max 75 characters. Do not use labels like "Passo", "Slide", or "Etapa".
 
 Return ONLY the new slide text, no JSON, no quotes, no explanation.`;
 
   const text = await callAI(prompt);
-  return cleanJsonText(text).replace(/^"|"$/g, '').trim();
+  return normalizeSlideText(cleanJsonText(text).replace(/^"|"$/g, '').trim(), slideIndex);
 }
 
 // ---- Analyze Content ----

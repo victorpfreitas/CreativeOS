@@ -11,7 +11,7 @@ import type {
   Project, Automation, Hook, Slideshow,
   ImageCollection, CollectionImage,
   CreateProjectInput, CreateAutomationInput, CreateCollectionInput,
-  Slide, ContentAnalysis, ContentPlan,
+  Slide, ContentAnalysis, ContentPlan, ContentBrief,
 } from './types';
 
 // Sort helper — avoids composite index requirement for compound queries
@@ -206,6 +206,13 @@ export async function createSlideshow(input: {
   theme?: 'dark' | 'light' | 'vibrant' | 'minimal' | 'bold_gradient';
   watermark?: string;
   logo_url?: string;
+  brief?: ContentBrief;
+  content_angle?: string;
+  template_id?: string;
+  font_preset_id?: string;
+  color_palette_id?: string;
+  accent_color?: string;
+  readiness_score?: number;
   scheduled_for?: string | null;
 }): Promise<Slideshow> {
   const data = { ...input, status: input.status || 'draft', created_at: Timestamp.now().toDate().toISOString() };
@@ -220,6 +227,14 @@ export async function updateSlideshow(id: string, input: Partial<{
   theme: 'dark' | 'light' | 'vibrant' | 'minimal' | 'bold_gradient';
   watermark: string;
   logo_url?: string;
+  brief: ContentBrief;
+  content_angle: string;
+  template_id: string;
+  font_preset_id: string;
+  color_palette_id: string;
+  accent_color: string;
+  readiness_score: number;
+  exported_at: string | null;
   scheduled_for: string | null;
 }>): Promise<Slideshow> {
   const ref = doc(db, 'slideshows', id);

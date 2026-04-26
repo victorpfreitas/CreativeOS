@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { User, onAuthStateChanged, signInWithPopup, signOut } from 'firebase/auth';
+import { User, onAuthStateChanged, signInWithPopup, signInWithRedirect, signOut } from 'firebase/auth';
 import { auth, googleProvider } from './firebase';
 
 interface AuthContextType {
@@ -15,6 +15,13 @@ const AuthContext = createContext<AuthContextType>({
   signIn: async () => {},
   logOut: async () => {},
 });
+
+function getAuthErrorCode(error: unknown): string {
+  if (typeof error === 'object' && error && 'code' in error && typeof error.code === 'string') {
+    return error.code;
+  }
+  return '';
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -32,7 +39,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await signInWithPopup(auth, googleProvider);
     } catch (error) {
+      const code = getAuthErrorCode(error);
       console.error('Error signing in with Google', error);
+
+      if (code === 'auth/popup-blocked') {
+        await signInWithRedirect(auth, googleProvider);
+        return;
+      }
+
       throw error;
     }
   }

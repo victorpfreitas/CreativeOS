@@ -202,16 +202,40 @@ function getTitleMetrics(text: string, variant: 'cover' | 'body' | 'cta', export
   };
 }
 
-function getBodyMetrics(text: string, exportMode?: boolean, compact?: boolean) {
-  const length = text.trim().length;
-  let size = 33;
-  if (length > 260) size = 25;
-  else if (length > 180) size = 28;
-  else if (length > 115) size = 30;
+function getBodyMetrics(text: string, variant: 'cover' | 'body' | 'cta', title: string, exportMode?: boolean, compact?: boolean) {
+  const cleanText = text.trim();
+  const length = cleanText.length;
+  const wordCount = cleanText.split(/\s+/).filter(Boolean).length;
+  const manualLines = cleanText.split('\n').filter((line) => line.trim()).length;
+  const titleLength = title.trim().length;
+  let size = variant === 'cover' ? 38 : variant === 'cta' ? 40 : 42;
+
+  if (variant === 'cover') {
+    if (length <= 80) size = 42;
+    else if (length > 170 || wordCount > 28 || manualLines > 3) size = 30;
+    else if (length > 125 || wordCount > 21) size = 34;
+  } else if (variant === 'cta') {
+    if (length <= 95) size = 44;
+    else if (length > 180 || wordCount > 30 || manualLines > 3) size = 31;
+    else if (length > 130 || wordCount > 22) size = 36;
+  } else {
+    if (length <= 90) size = 46;
+    else if (length <= 155 && wordCount <= 26 && manualLines <= 3) size = 40;
+    else if (length <= 230 && wordCount <= 38 && manualLines <= 4) size = 35;
+    else if (length <= 320 && manualLines <= 5) size = 30;
+    else size = 26;
+  }
+
+  if (titleLength > 92 && variant !== 'cover') size -= 2;
+  if (titleLength > 135) size -= 2;
+  const minimum = variant === 'body' ? 26 : 28;
+  const lineHeight = size >= 42 ? 1.12 : size >= 35 ? 1.17 : 1.22;
+  const maxWidth = length <= 150 ? '100%' : variant === 'cta' ? '88%' : '96%';
 
   return {
-    fontSize: `${Math.max(px(22, exportMode, compact), px(size, exportMode, compact))}px`,
-    lineHeight: 1.24,
+    fontSize: `${Math.max(px(minimum, exportMode, compact), px(size, exportMode, compact))}px`,
+    lineHeight,
+    maxWidth,
   };
 }
 
@@ -422,7 +446,7 @@ function CoverLayout(props: {
 }) {
   const { content, logoUrl, system, editable, exportMode, compact, onTextChange } = props;
   const titleMetrics = getTitleMetrics(content.title, 'cover', exportMode, compact);
-  const bodyMetrics = getBodyMetrics(content.body, exportMode, compact);
+  const bodyMetrics = getBodyMetrics(content.body, 'cover', content.title, exportMode, compact);
 
   return (
     <>
@@ -468,7 +492,7 @@ function CoverLayout(props: {
               textAlign: 'center',
               whiteSpace: 'pre-wrap',
               wordBreak: 'break-word',
-              maxWidth: '92%',
+              maxWidth: bodyMetrics.maxWidth,
             }}
           />
         )}
@@ -496,7 +520,7 @@ function BodyLayout(props: {
   const number = String(slideIndex + 1).padStart(2, '0');
   const total = String(totalSlides).padStart(2, '0');
   const titleMetrics = getTitleMetrics(content.title, isCTA ? 'cta' : 'body', exportMode, compact);
-  const bodyMetrics = getBodyMetrics(content.body, exportMode, compact);
+  const bodyMetrics = getBodyMetrics(content.body, isCTA ? 'cta' : 'body', content.title, exportMode, compact);
 
   return (
     <>
@@ -563,7 +587,7 @@ function BodyLayout(props: {
               textAlign: 'left',
               whiteSpace: 'pre-wrap',
               wordBreak: 'break-word',
-              maxWidth: isCTA ? '86%' : '96%',
+              maxWidth: bodyMetrics.maxWidth,
             }}
           />
         )}

@@ -63,6 +63,11 @@ export interface Slide {
   type: 'hook' | 'body';
   text: string;
   image_url: string;
+  tagline?: string;
+  title?: string;
+  body?: string;
+  cta?: string;
+  accent_text?: string;
 }
 
 export interface ContentBrief {
@@ -102,6 +107,9 @@ export interface Slideshow {
   brief?: ContentBrief;
   content_angle?: string;
   template_id?: string;
+  font_preset_id?: string;
+  color_palette_id?: string;
+  accent_color?: string;
   readiness_score?: number;
   exported_at?: string | null;
   created_at: string;

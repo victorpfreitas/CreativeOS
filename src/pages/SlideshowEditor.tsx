@@ -1,17 +1,20 @@
 import { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Save, Loader2, Image as ImageIcon, Download, Copy, Check, Plus, Trash2, RefreshCw, ChevronUp, ChevronDown } from 'lucide-react';
+import { ArrowLeft, Save, Loader2, Image as ImageIcon, Download, Copy, Check, Plus, Trash2, RefreshCw, ChevronUp, ChevronDown, Type, Palette } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
 import type { Slideshow, Slide, ImageCollection } from '../lib/types';
 import { carouselTemplates, getCarouselTemplate } from '../lib/carouselTemplates';
+import { carouselColorPalettes, carouselFontPresets, defaultColorPaletteId, defaultFontPresetId, getCarouselColorPalette } from '../lib/carouselVisuals';
 import * as db from '../lib/database';
 import Modal from '../components/ui/Modal';
-import TemplateSlide from '../components/carousel/TemplateSlide';
+import TemplateSlide, { getSlideReadabilityWarning } from '../components/carousel/TemplateSlide';
 import { toPng } from 'html-to-image';
 import JSZip from 'jszip';
 import { regenerateSlide } from '../services/geminiService';
 
 const SLIDE_W = 1080;
 const SLIDE_H = 1350;
+
+type SlideTextField = keyof Pick<Slide, 'tagline' | 'title' | 'body' | 'cta' | 'accent_text'>;
 
 function safeFileName(value: string) {
   return value
@@ -22,12 +25,28 @@ function safeFileName(value: string) {
     .replace(/(^-|-$)/g, '') || 'carousel';
 }
 
+function composeSlideText(slide: Slide) {
+  return [slide.tagline, slide.title, slide.body, slide.cta].filter(Boolean).join('\n\n') || slide.text || '';
+}
+
+function getEditableValue(slide: Slide, field: SlideTextField, slideIndex: number, totalSlides: number, watermark: string) {
+  if (field === 'title') return slide.title ?? slide.text ?? '';
+  if (field === 'tagline') return slide.tagline ?? (slideIndex === 0 || slide.type === 'hook' ? watermark || 'Creative OS' : '');
+  if (field === 'accent_text') return slide.accent_text ?? '';
+  if (field === 'cta') return slide.cta ?? '';
+  if (field === 'body') return slide.body ?? '';
+  return '';
+}
+
 export default function SlideshowEditor() {
   const { id } = useParams<{ id: string }>();
   const [slideshow, setSlideshow] = useState<Slideshow | null>(null);
   const [slides, setSlides] = useState<Slide[]>([]);
   const [caption, setCaption] = useState('');
   const [templateId, setTemplateId] = useState(carouselTemplates[0].id);
+  const [fontPresetId, setFontPresetId] = useState(defaultFontPresetId);
+  const [colorPaletteId, setColorPaletteId] = useState(defaultColorPaletteId);
+  const [accentColor, setAccentColor] = useState('');
   const [watermark, setWatermark] = useState('');
   const [logoUrl, setLogoUrl] = useState('');
   const [currentSlide, setCurrentSlide] = useState(0);
@@ -62,6 +81,9 @@ export default function SlideshowEditor() {
         setSlides(data.slides || []);
         setCaption(data.caption || '');
         setTemplateId(data.template_id || carouselTemplates[0].id);
+        setFontPresetId(data.font_preset_id || defaultFontPresetId);
+        setColorPaletteId(data.color_palette_id || defaultColorPaletteId);
+        setAccentColor(data.accent_color || '');
         setWatermark(data.watermark || '');
         setLogoUrl(data.logo_url || '');
         slideRefs.current = new Array(data.slides?.length || 0).fill(null);
@@ -78,6 +100,7 @@ export default function SlideshowEditor() {
     setSaving(true);
     try {
       const template = getCarouselTemplate(templateId);
+      const palette = getCarouselColorPalette(colorPaletteId);
       await db.updateSlideshow(slideshow.id, {
         slides,
         caption,
@@ -85,6 +108,9 @@ export default function SlideshowEditor() {
         watermark,
         logo_url: logoUrl,
         template_id: template.id,
+        font_preset_id: fontPresetId,
+        color_palette_id: colorPaletteId,
+        accent_color: accentColor || palette.accent,
       } as any);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
@@ -96,7 +122,15 @@ export default function SlideshowEditor() {
   }
 
   function updateSlideText(index: number, text: string) {
-    setSlides((prev) => prev.map((s, i) => i === index ? { ...s, text } : s));
+    setSlides((prev) => prev.map((s, i) => i === index ? { ...s, title: text, text: composeSlideText({ ...s, title: text }) } : s));
+  }
+
+  function updateSlideField(index: number, field: SlideTextField, value: string) {
+    setSlides((prev) => prev.map((s, i) => {
+      if (i !== index) return s;
+      const next = { ...s, [field]: value };
+      return { ...next, text: composeSlideText(next) };
+    }));
   }
 
   function changeBackgroundImage(url: string) {
@@ -122,7 +156,7 @@ export default function SlideshowEditor() {
   }
 
   function addSlide() {
-    const newSlide: Slide = { type: 'body', text: '', image_url: '' };
+    const newSlide: Slide = { type: 'body', text: 'Novo ponto', title: 'Novo ponto', body: '', image_url: '' };
     const updated = [...slides.slice(0, currentSlide + 1), newSlide, ...slides.slice(currentSlide + 1)];
     setSlides(updated);
     slideRefs.current = new Array(updated.length).fill(null);
@@ -152,7 +186,8 @@ export default function SlideshowEditor() {
     const updated = [...slides];
     [updated[index], updated[target]] = [updated[target], updated[index]];
     setSlides(updated);
-    scrollToSlide(target);
+    setCurrentSlide(target);
+    window.setTimeout(() => scrollToSlide(target), 0);
   }
 
   async function handleRegenSlide() {
@@ -163,8 +198,8 @@ export default function SlideshowEditor() {
     try {
       const newText = await regenerateSlide({
         slideIndex: currentSlide,
-        currentText: slides[currentSlide].text,
-        hookText: hookSlide?.text || '',
+        currentText: slides[currentSlide].title || slides[currentSlide].text,
+        hookText: hookSlide?.title || hookSlide?.text || '',
         niche: automation?.niche || slideshow.brief?.topic || '',
         narrativePrompt: automation?.narrative_prompt || slideshow.content_angle || '',
         knowledgeBase: automation?.project?.knowledge_base,
@@ -213,6 +248,9 @@ export default function SlideshowEditor() {
 
   const slide = slides[currentSlide];
   const selectedTemplate = getCarouselTemplate(templateId);
+  const selectedPalette = getCarouselColorPalette(colorPaletteId);
+  const currentWarning = getSlideReadabilityWarning(slide, currentSlide, slides.length);
+  const isCTA = currentSlide === slides.length - 1 && currentSlide !== 0;
 
   return (
     <div className="h-[calc(100vh-120px)] flex flex-col gap-4 overflow-hidden">
@@ -263,7 +301,7 @@ export default function SlideshowEditor() {
                 onClick={() => scrollToSlide(i)}
                 className={`group relative aspect-[4/5] rounded-xl overflow-hidden cursor-pointer border-2 transition-all ${currentSlide === i ? 'border-indigo-500 ring-2 ring-indigo-500/20' : 'border-white/5 hover:border-white/20'}`}
               >
-                <TemplateSlide slide={s} slideIndex={i} totalSlides={slides.length} templateId={templateId} watermark={watermark} logoUrl={logoUrl} compact />
+                <TemplateSlide slide={s} slideIndex={i} totalSlides={slides.length} templateId={templateId} watermark={watermark} logoUrl={logoUrl} fontPresetId={fontPresetId} colorPaletteId={colorPaletteId} accentColor={accentColor || selectedPalette.accent} compact />
                 <div className={`absolute top-2 left-2 w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-bold ${currentSlide === i ? 'bg-indigo-500 text-white' : 'bg-black/60 text-slate-300'}`}>
                   {i + 1}
                 </div>
@@ -303,8 +341,9 @@ export default function SlideshowEditor() {
               templateId={templateId}
               watermark={watermark}
               logoUrl={logoUrl}
-              editable
-              onTextChange={(text) => updateSlideText(currentSlide, text)}
+              fontPresetId={fontPresetId}
+              colorPaletteId={colorPaletteId}
+              accentColor={accentColor || selectedPalette.accent}
             />
 
             <div className="absolute bottom-6 left-0 right-0 flex justify-center gap-2 opacity-0 group-hover:opacity-100 transition-all translate-y-2 group-hover:translate-y-0 z-30">
@@ -354,6 +393,92 @@ export default function SlideshowEditor() {
             </div>
 
             <div className="space-y-4 pt-4 border-t border-white/5">
+              <div className="flex items-center gap-2">
+                <Type className="w-4 h-4 text-indigo-300" />
+                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Fontes</h4>
+              </div>
+              <div className="grid grid-cols-1 gap-2">
+                {carouselFontPresets.map((preset) => (
+                  <button
+                    key={preset.id}
+                    onClick={() => setFontPresetId(preset.id)}
+                    className={`rounded-xl border p-3 text-left transition-all ${fontPresetId === preset.id ? 'border-indigo-400 bg-indigo-500/10' : 'border-white/5 hover:bg-white/5'}`}
+                  >
+                    <span className="block text-sm font-black text-white" style={{ fontFamily: preset.displayFont }}>{preset.name}</span>
+                    <span className="block text-[11px] text-slate-500 mt-1 leading-snug">{preset.description}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-4 pt-4 border-t border-white/5">
+              <div className="flex items-center gap-2">
+                <Palette className="w-4 h-4 text-indigo-300" />
+                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Paleta</h4>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {carouselColorPalettes.map((palette) => (
+                  <button
+                    key={palette.id}
+                    onClick={() => {
+                      setColorPaletteId(palette.id);
+                      setAccentColor(palette.accent);
+                    }}
+                    className={`rounded-xl border p-2 text-left transition-all ${colorPaletteId === palette.id ? 'border-indigo-400 bg-indigo-500/10' : 'border-white/5 hover:bg-white/5'}`}
+                    title={palette.description}
+                  >
+                    <div className="flex h-7 overflow-hidden rounded-lg border border-black/20">
+                      <span className="flex-1" style={{ background: palette.background }} />
+                      <span className="flex-1" style={{ background: palette.text }} />
+                      <span className="flex-1" style={{ background: palette.accent }} />
+                    </div>
+                    <span className="block text-[11px] text-slate-300 font-bold mt-2 truncate">{palette.name}</span>
+                  </button>
+                ))}
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-slate-500 uppercase">Cor de destaque</label>
+                <div className="flex gap-2">
+                  <input type="color" value={accentColor || selectedPalette.accent} onChange={(e) => setAccentColor(e.target.value)} className="h-9 w-12 rounded-lg bg-black/40 border border-white/10 p-1" />
+                  <input value={accentColor || selectedPalette.accent} onChange={(e) => setAccentColor(e.target.value)} className="flex-1 bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:ring-1 focus:ring-indigo-500" />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4 pt-4 border-t border-white/5">
+              <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Texto do slide</h4>
+              {currentWarning && (
+                <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-[11px] font-bold leading-snug text-amber-100">
+                  {currentWarning}
+                </div>
+              )}
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">Tagline</label>
+                  <input value={getEditableValue(slide, 'tagline', currentSlide, slides.length, watermark)} onChange={(e) => updateSlideField(currentSlide, 'tagline', e.target.value)} className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:ring-1 focus:ring-indigo-500" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">Título</label>
+                  <textarea value={getEditableValue(slide, 'title', currentSlide, slides.length, watermark)} onChange={(e) => updateSlideField(currentSlide, 'title', e.target.value)} rows={3} className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:ring-1 focus:ring-indigo-500 resize-none" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">Corpo</label>
+                  <textarea value={getEditableValue(slide, 'body', currentSlide, slides.length, watermark)} onChange={(e) => updateSlideField(currentSlide, 'body', e.target.value)} rows={4} className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:ring-1 focus:ring-indigo-500 resize-none" placeholder="Texto de apoio opcional" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">Trecho em destaque</label>
+                  <input value={getEditableValue(slide, 'accent_text', currentSlide, slides.length, watermark)} onChange={(e) => updateSlideField(currentSlide, 'accent_text', e.target.value)} className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:ring-1 focus:ring-indigo-500" placeholder="Ex: maioria" />
+                </div>
+                {isCTA && (
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase">CTA visual</label>
+                    <input value={getEditableValue(slide, 'cta', currentSlide, slides.length, watermark)} onChange={(e) => updateSlideField(currentSlide, 'cta', e.target.value)} className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:ring-1 focus:ring-indigo-500" placeholder="Arraste para salvar / me chama no direct" />
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-4 pt-4 border-t border-white/5">
               <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Branding</h4>
               <div className="space-y-3">
                 <div className="space-y-1.5">
@@ -394,7 +519,7 @@ export default function SlideshowEditor() {
             ref={(el) => { slideRefs.current[i] = el; }}
             style={{ width: `${SLIDE_W}px`, height: `${SLIDE_H}px`, position: 'relative', overflow: 'hidden' }}
           >
-            <TemplateSlide slide={s} slideIndex={i} totalSlides={slides.length} templateId={templateId} watermark={watermark} logoUrl={logoUrl} exportMode />
+            <TemplateSlide slide={s} slideIndex={i} totalSlides={slides.length} templateId={templateId} watermark={watermark} logoUrl={logoUrl} fontPresetId={fontPresetId} colorPaletteId={colorPaletteId} accentColor={accentColor || selectedPalette.accent} exportMode />
           </div>
         ))}
       </div>

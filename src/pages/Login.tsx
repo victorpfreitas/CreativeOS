@@ -1,7 +1,7 @@
 import { useAuth } from '../lib/AuthContext';
 import { Navigate } from 'react-router-dom';
 import { AlertCircle, Loader2, Sparkles } from 'lucide-react';
-import { useState } from 'react';
+import { useState, type FormEvent } from 'react';
 
 function getAuthErrorCode(error: unknown): string {
   if (typeof error === 'object' && error && 'code' in error && typeof error.code === 'string') {
@@ -34,13 +34,24 @@ function getLoginErrorMessage(error: unknown): string {
     return 'Nao consegui falar com o Firebase agora. Verifique a conexao e tente novamente.';
   }
 
+  if (code === 'auth/invalid-credential' || code === 'auth/user-not-found' || code === 'auth/wrong-password') {
+    return 'E-mail ou senha invalidos.';
+  }
+
+  if (code === 'auth/operation-not-allowed') {
+    return 'Login por e-mail e senha ainda nao esta habilitado no Firebase Auth.';
+  }
+
   return code ? `Login falhou (${code}). Tente novamente ou use a URL de producao.` : 'Nao consegui fazer login agora. Tente novamente.';
 }
 
 export default function Login() {
-  const { user, signIn } = useAuth();
+  const { user, signIn, signInWithEmail } = useAuth();
   const [loading, setLoading] = useState(false);
+  const [emailLoading, setEmailLoading] = useState(false);
   const [error, setError] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
 
   if (user) {
     return <Navigate to="/" replace />;
@@ -55,6 +66,19 @@ export default function Login() {
       setError(getLoginErrorMessage(err));
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleEmailLogin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setEmailLoading(true);
+    setError('');
+    try {
+      await signInWithEmail(email.trim(), password);
+    } catch (err) {
+      setError(getLoginErrorMessage(err));
+    } finally {
+      setEmailLoading(false);
     }
   }
 
@@ -74,9 +98,48 @@ export default function Login() {
           </div>
         )}
 
+        <form onSubmit={handleEmailLogin} className="space-y-3 text-left mb-5">
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">E-mail</label>
+            <input
+              type="email"
+              autoComplete="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+              required
+            />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Senha</label>
+            <input
+              type="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+              required
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={emailLoading || loading}
+            className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-medium py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition-colors"
+          >
+            {emailLoading && <Loader2 className="w-5 h-5 animate-spin" />}
+            {emailLoading ? 'Entrando...' : 'Entrar com e-mail'}
+          </button>
+        </form>
+
+        <div className="flex items-center gap-3 mb-5">
+          <div className="h-px flex-1 bg-slate-200" />
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">ou</span>
+          <div className="h-px flex-1 bg-slate-200" />
+        </div>
+
         <button
           onClick={handleLogin}
-          disabled={loading}
+          disabled={loading || emailLoading}
           className="w-full bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white font-medium py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition-colors"
         >
           {loading ? (

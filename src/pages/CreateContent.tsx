@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import type { ContentBrief, ContentStrategy, Project } from '../lib/types';
 import * as db from '../lib/database';
 import { carouselTemplates, getCarouselTemplate } from '../lib/carouselTemplates';
+import { defaultColorPaletteId, defaultFontPresetId, getCarouselColorPalette } from '../lib/carouselVisuals';
 import { expertContentPresets, getExpertContentPreset } from '../lib/contentPresets';
 import { generateContentStrategy } from '../services/geminiService';
 
@@ -86,6 +87,7 @@ export default function CreateContent() {
     setSaving(true);
     setError('');
     try {
+      const defaultPalette = getCarouselColorPalette(defaultColorPaletteId);
       const slideshow = await db.createSlideshow({
         slides: strategy.slides,
         caption: strategy.caption,
@@ -94,9 +96,12 @@ export default function CreateContent() {
         brief,
         content_angle: strategy.angle,
         template_id: selectedTemplate.id,
+        font_preset_id: defaultFontPresetId,
+        color_palette_id: defaultColorPaletteId,
+        accent_color: defaultPalette.accent,
         readiness_score: strategy.readiness_score,
         scheduled_for: null,
-      } as any);
+      });
       navigate(`/editor/${slideshow.id}`);
     } catch (err) {
       console.error(err);
@@ -297,7 +302,10 @@ export default function CreateContent() {
                       <span>{selectedTemplate.badge}</span>
                       <span>{selectedPreset.label}</span>
                     </div>
-                    <p className="text-3xl font-black leading-[0.95] tracking-tight">{strategy.slides[0]?.text || strategy.promise}</p>
+                    <div className="space-y-4">
+                      <p className="text-3xl font-black leading-[0.95] tracking-tight">{strategy.slides[0]?.title || strategy.slides[0]?.text || strategy.promise}</p>
+                      {strategy.slides[0]?.body && <p className="text-sm opacity-80 leading-snug">{strategy.slides[0].body}</p>}
+                    </div>
                     <div className="space-y-2">
                       <div className="w-16 h-1 rounded-full" style={{ backgroundColor: selectedTemplate.accentColor }} />
                       <p className="text-xs opacity-80">{strategy.angle}</p>

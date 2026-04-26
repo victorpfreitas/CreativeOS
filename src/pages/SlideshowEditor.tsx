@@ -289,7 +289,7 @@ export default function SlideshowEditor() {
   const isCTA = currentSlide === slides.length - 1 && currentSlide !== 0;
 
   return (
-    <div className="h-[calc(100vh-120px)] flex flex-col gap-4 overflow-hidden">
+    <div className="h-full min-h-0 flex flex-col gap-4 overflow-hidden">
       <header className="flex items-center justify-between px-2">
         <div className="flex items-center gap-3">
           <Link to={slideshow.automation_id ? `/automations/${slideshow.automation_id}` : '/gallery'} className="p-1.5 hover:bg-white/5 rounded-lg transition-colors text-slate-500">
@@ -322,8 +322,8 @@ export default function SlideshowEditor() {
         </div>
       </header>
 
-      <div className="flex-1 flex overflow-hidden gap-4">
-        <aside className="w-64 flex flex-col gap-4 overflow-hidden">
+      <div className="flex-1 min-h-0 flex overflow-hidden gap-4">
+        <aside className="w-64 min-h-0 flex flex-col gap-4 overflow-hidden">
           <div className="flex items-center justify-between px-2">
             <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Slides ({slides.length})</h3>
             <button onClick={addSlide} className="p-1 hover:bg-white/5 rounded text-indigo-400 hover:text-indigo-300 transition-colors" title="Adicionar slide">
@@ -363,7 +363,7 @@ export default function SlideshowEditor() {
           </div>
         </aside>
 
-        <main className="flex-1 bg-[#111111] rounded-3xl border border-white/5 flex flex-col items-center justify-center relative group overflow-hidden">
+        <main className="flex-1 min-w-0 min-h-0 bg-[#111111] rounded-3xl border border-white/5 flex flex-col items-center justify-center relative group overflow-hidden">
           <div className="absolute top-6 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-black/40 backdrop-blur-md px-3 py-1 rounded-full border border-white/10 z-20">
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{currentSlide + 1} / {slides.length}</span>
             <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest ml-2">{selectedTemplate.name}</span>
@@ -408,7 +408,7 @@ export default function SlideshowEditor() {
           </button>
         </main>
 
-        <aside className="w-72 flex flex-col gap-4 overflow-y-auto pr-2 custom-scrollbar">
+        <aside className="w-72 min-h-0 flex flex-col gap-4 overflow-y-auto pr-2 custom-scrollbar">
           <div className="bg-white/5 border border-white/10 rounded-2xl p-5 space-y-6">
             <div>
               <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Direção de arte</h4>

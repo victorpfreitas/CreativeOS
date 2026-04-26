@@ -1,20 +1,22 @@
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import { LogOut } from 'lucide-react';
 import { useAuth } from '../../lib/AuthContext';
 
 export default function AppLayout() {
   const { user, logOut } = useAuth();
+  const location = useLocation();
+  const isEditor = location.pathname.startsWith('/editor/');
 
   return (
     <div className="flex h-screen overflow-hidden bg-[#0a0a0a] text-slate-300 font-space">
       <Sidebar />
-      <main className="flex-1 overflow-y-auto overflow-x-hidden relative">
+      <main className={`flex-1 overflow-x-hidden relative ${isEditor ? 'overflow-hidden' : 'overflow-y-auto'}`}>
         {/* Subtle background glow effect */}
         <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] bg-indigo-600/20 rounded-full blur-[120px] pointer-events-none" />
         <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-pink-600/10 rounded-full blur-[120px] pointer-events-none" />
         
-        <div className="p-8 max-w-7xl mx-auto relative z-10">
+        <div className={`relative z-10 ${isEditor ? 'h-full min-h-0 p-4 max-w-none' : 'p-8 max-w-7xl mx-auto'}`}>
           <Outlet />
         </div>
       </main>

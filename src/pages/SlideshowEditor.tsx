@@ -29,6 +29,19 @@ function composeSlideText(slide: Slide) {
   return [slide.tagline, slide.title, slide.body, slide.cta].filter(Boolean).join('\n\n') || slide.text || '';
 }
 
+function getSlideRenderKey(slide: Slide, index: number) {
+  return [
+    slide.type,
+    slide.tagline,
+    slide.title,
+    slide.body,
+    slide.cta,
+    slide.accent_text,
+    slide.text,
+    slide.image_url,
+  ].filter(Boolean).join('|') || `slide-${index}`;
+}
+
 function SlideThumbnailPreview({
   slideIndex,
   totalSlides,
@@ -425,7 +438,7 @@ export default function SlideshowEditor() {
             <div ref={scrollContainerRef} className="flex h-[92px] gap-3 overflow-x-auto overflow-y-hidden pb-1 custom-scrollbar">
               {slides.map((s, i) => (
                 <div
-                  key={i}
+                  key={getSlideRenderKey(s, i)}
                   onClick={() => scrollToSlide(i)}
                   className={`group relative h-full aspect-[4/5] shrink-0 rounded-lg overflow-hidden cursor-pointer border-2 transition-all ${currentSlide === i ? 'border-indigo-500 ring-2 ring-indigo-500/20' : 'border-white/5 hover:border-white/20'}`}
                 >
@@ -439,19 +452,19 @@ export default function SlideshowEditor() {
                   <div className={`absolute top-1.5 left-1.5 w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-bold ${currentSlide === i ? 'bg-indigo-500 text-white' : 'bg-black/60 text-slate-300'}`}>
                     {i + 1}
                   </div>
-                  <div className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                  <div className="absolute inset-x-1 bottom-1 flex justify-center gap-1 rounded-md bg-black/55 px-1 py-1 opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100 z-10">
                     {i > 0 && (
-                      <button onClick={(e) => { e.stopPropagation(); moveSlide(i, 'left'); }} className="p-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md shadow-lg" title="Mover para esquerda">
+                      <button onClick={(e) => { e.stopPropagation(); moveSlide(i, 'left'); }} className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-indigo-600 text-white shadow-lg transition-colors hover:bg-indigo-700" title="Mover para esquerda">
                         <ChevronLeft className="w-3 h-3" />
                       </button>
                     )}
                     {i < slides.length - 1 && (
-                      <button onClick={(e) => { e.stopPropagation(); moveSlide(i, 'right'); }} className="p-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md shadow-lg" title="Mover para direita">
+                      <button onClick={(e) => { e.stopPropagation(); moveSlide(i, 'right'); }} className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-indigo-600 text-white shadow-lg transition-colors hover:bg-indigo-700" title="Mover para direita">
                         <ChevronRight className="w-3 h-3" />
                       </button>
                     )}
                     {s.type !== 'hook' && (
-                      <button onClick={(e) => { e.stopPropagation(); confirmDeleteSlide(i); }} className="p-1 bg-red-500 hover:bg-red-600 text-white rounded-md shadow-lg" title="Remover slide">
+                      <button onClick={(e) => { e.stopPropagation(); confirmDeleteSlide(i); }} className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-red-500 text-white shadow-lg transition-colors hover:bg-red-600" title="Remover slide">
                         <Trash2 className="w-3 h-3" />
                       </button>
                     )}

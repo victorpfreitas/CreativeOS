@@ -1,6 +1,7 @@
-import type { CSSProperties } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import type { Slide } from '../../lib/types';
 import { getCarouselTemplate } from '../../lib/carouselTemplates';
+import { getCarouselColorPalette, getCarouselFontPreset } from '../../lib/carouselVisuals';
 
 interface TemplateSlideProps {
   slide: Slide;
@@ -9,29 +10,39 @@ interface TemplateSlideProps {
   templateId?: string;
   watermark?: string;
   logoUrl?: string;
+  fontPresetId?: string;
+  colorPaletteId?: string;
+  accentColor?: string;
   editable?: boolean;
   exportMode?: boolean;
   compact?: boolean;
   onTextChange?: (text: string) => void;
+  onSlideChange?: (patch: Partial<Slide>) => void;
+}
+
+interface SlideContent {
+  tagline: string;
+  title: string;
+  body: string;
+  cta: string;
+  accentText: string;
 }
 
 interface VisualSystem {
   bg: string;
+  surface: string;
   ink: string;
   muted: string;
+  accent: string;
+  line: string;
   font: string;
   displayFont: string;
+  titleWeight: number;
+  bodyWeight: number;
+  letterSpacing: string;
   texture: string;
+  textureOpacity: number;
 }
-
-const paperSystem: VisualSystem = {
-  bg: '#f4f0e6',
-  ink: '#111111',
-  muted: '#57534a',
-  font: 'Inter, Arial, sans-serif',
-  displayFont: 'Inter, Arial Black, Arial, sans-serif',
-  texture: 'radial-gradient(circle at 20% 20%, rgba(0,0,0,0.075) 0 1px, transparent 1.2px), radial-gradient(circle at 80% 70%, rgba(0,0,0,0.045) 0 1px, transparent 1.2px)',
-};
 
 function getScale(exportMode?: boolean, compact?: boolean) {
   if (compact) return 0.22;
@@ -42,74 +53,212 @@ function px(value: number, exportMode?: boolean, compact?: boolean) {
   return Math.round(value * getScale(exportMode, compact));
 }
 
-function getMinimumTextSize(variant: 'cover' | 'body' | 'cta', exportMode?: boolean, compact?: boolean) {
-  if (variant === 'cover') return px(26, exportMode, compact);
-  if (variant === 'body') {
-    if (compact) return px(36, exportMode, compact);
-    return exportMode ? 42 : 24;
-  }
-  if (compact) return px(28, exportMode, compact);
-  return exportMode ? 34 : 18;
-}
-
-function getTextMetrics(text: string, variant: 'cover' | 'body' | 'cta', exportMode?: boolean, compact?: boolean) {
-  const length = text.trim().length;
-  let size = variant === 'cover' ? 96 : variant === 'cta' ? 62 : 54;
-
-  if (variant === 'cover') {
-    if (length > 180) size = 58;
-    else if (length > 135) size = 66;
-    else if (length > 95) size = 76;
-  } else if (variant === 'cta') {
-    if (length > 160) size = 44;
-    else if (length > 110) size = 50;
-  } else {
-    if (length > 260) size = 44;
-    else if (length > 190) size = 46;
-    else if (length > 125) size = 50;
-  }
-
-  return {
-    fontSize: `${Math.max(getMinimumTextSize(variant, exportMode, compact), px(size, exportMode, compact))}px`,
-    lineHeight: variant === 'cover' ? 0.98 : 1.14,
-  };
-}
-
-function isTextTooLong(text: string, variant: 'cover' | 'body' | 'cta') {
-  const length = text.trim().length;
-  if (variant === 'cover') return length > 110;
-  if (variant === 'cta') return length > 100;
-  return length > 90;
-}
-
 function brandLabel(watermark?: string) {
   return watermark?.trim() || 'Creative OS';
 }
 
-function EditableText({
+function joinSlideText(slide: Slide) {
+  return [slide.tagline, slide.title, slide.body, slide.cta].filter(Boolean).join('\n\n') || slide.text || '';
+}
+
+function splitLegacyText(text: string) {
+  return text
+    .split(/\n+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function splitFirstSentence(text: string) {
+  const match = text.match(/^(.{36,110}?[.!?])\s+(.+)$/s);
+  if (!match) return null;
+  return { title: match[1].trim(), body: match[2].trim() };
+}
+
+function getSlideContent(slide: Slide, isCover: boolean, isCTA: boolean, label: string): SlideContent {
+  const legacyText = (slide.text || '').trim();
+  const lines = splitLegacyText(legacyText);
+  const sentenceSplit = splitFirstSentence(legacyText);
+  const hasStructuredContent = Boolean(slide.tagline || slide.title || slide.body || slide.cta || slide.accent_text);
+
+  if (hasStructuredContent) {
+    return {
+      tagline: slide.tagline || (isCover ? label : ''),
+      title: slide.title || legacyText || 'Escreva um titulo forte',
+      body: slide.body || '',
+      cta: slide.cta || '',
+      accentText: slide.accent_text || '',
+    };
+  }
+
+  if (isCover) {
+    return {
+      tagline: label,
+      title: lines[0] || legacyText || 'Uma ideia forte comeca aqui',
+      body: lines.slice(1).join('\n') || '',
+      cta: '',
+      accentText: '',
+    };
+  }
+
+  if (isCTA) {
+    return {
+      tagline: 'proximo passo',
+      title: lines[0] || legacyText || 'Pronto para transformar isso em conteudo?',
+      body: lines.slice(1).join('\n') || '',
+      cta: '',
+      accentText: '',
+    };
+  }
+
+  if (lines.length > 1) {
+    return {
+      tagline: '',
+      title: lines[0],
+      body: lines.slice(1).join('\n'),
+      cta: '',
+      accentText: '',
+    };
+  }
+
+  if (sentenceSplit) {
+    return {
+      tagline: '',
+      title: sentenceSplit.title,
+      body: sentenceSplit.body,
+      cta: '',
+      accentText: '',
+    };
+  }
+
+  return {
+    tagline: '',
+    title: legacyText || 'Escreva este slide',
+    body: '',
+    cta: '',
+    accentText: '',
+  };
+}
+
+function getVisualSystem(fontPresetId?: string, colorPaletteId?: string, accentColor?: string): VisualSystem {
+  const font = getCarouselFontPreset(fontPresetId);
+  const palette = getCarouselColorPalette(colorPaletteId);
+
+  return {
+    bg: palette.background,
+    surface: palette.surface,
+    ink: palette.text,
+    muted: palette.muted,
+    accent: accentColor || palette.accent,
+    line: palette.line,
+    font: font.bodyFont,
+    displayFont: font.displayFont,
+    titleWeight: font.titleWeight,
+    bodyWeight: font.bodyWeight,
+    letterSpacing: font.letterSpacing,
+    texture: 'radial-gradient(circle at 20% 20%, rgba(0,0,0,0.075) 0 1px, transparent 1.2px), radial-gradient(circle at 80% 70%, rgba(0,0,0,0.045) 0 1px, transparent 1.2px)',
+    textureOpacity: palette.textureOpacity,
+  };
+}
+
+function getTitleMetrics(text: string, variant: 'cover' | 'body' | 'cta', exportMode?: boolean, compact?: boolean) {
+  const length = text.trim().length;
+  let size = variant === 'cover' ? 82 : variant === 'cta' ? 66 : 54;
+
+  if (variant === 'cover') {
+    if (length > 155) size = 52;
+    else if (length > 115) size = 60;
+    else if (length > 80) size = 68;
+  } else if (variant === 'cta') {
+    if (length > 135) size = 46;
+    else if (length > 90) size = 54;
+  } else {
+    if (length > 130) size = 40;
+    else if (length > 88) size = 46;
+  }
+
+  const minimum = variant === 'cover' ? 46 : variant === 'cta' ? 40 : 36;
+  return {
+    fontSize: `${Math.max(px(minimum, exportMode, compact), px(size, exportMode, compact))}px`,
+    lineHeight: variant === 'cover' ? 0.97 : 1.02,
+  };
+}
+
+function getBodyMetrics(text: string, exportMode?: boolean, compact?: boolean) {
+  const length = text.trim().length;
+  let size = 33;
+  if (length > 260) size = 25;
+  else if (length > 180) size = 28;
+  else if (length > 115) size = 30;
+
+  return {
+    fontSize: `${Math.max(px(22, exportMode, compact), px(size, exportMode, compact))}px`,
+    lineHeight: 1.24,
+  };
+}
+
+function isTextTooLong(slide: Slide, isCover: boolean, isCTA: boolean) {
+  const title = slide.title || slide.text || '';
+  const body = slide.body || '';
+  if (isCover) return title.length > 120 || body.length > 150;
+  if (isCTA) return title.length > 100 || body.length > 170;
+  return title.length > 90 || body.length > 230;
+}
+
+export function getSlideReadabilityWarning(slide: Slide, slideIndex: number, totalSlides: number) {
+  const isCover = slideIndex === 0 || slide.type === 'hook';
+  const isCTA = slideIndex === totalSlides - 1 && !isCover;
+  if (!isTextTooLong(slide, isCover, isCTA)) return '';
+  return 'Texto longo: reduza titulo ou corpo para manter leitura premium.';
+}
+
+function HighlightedText({ text, accentText, accentColor }: { text: string; accentText?: string; accentColor: string }) {
+  if (!accentText?.trim()) return <>{text}</>;
+
+  const source = text.toLocaleLowerCase();
+  const needle = accentText.trim().toLocaleLowerCase();
+  const index = source.indexOf(needle);
+  if (index < 0) return <>{text}</>;
+
+  return (
+    <>
+      {text.slice(0, index)}
+      <span style={{ color: accentColor }}>{text.slice(index, index + accentText.trim().length)}</span>
+      {text.slice(index + accentText.trim().length)}
+    </>
+  );
+}
+
+function TextSlot({
   value,
   style,
   editable,
-  onTextChange,
+  accentText,
+  accentColor,
+  onChange,
 }: {
   value: string;
   style: CSSProperties;
   editable?: boolean;
-  onTextChange?: (text: string) => void;
+  accentText?: string;
+  accentColor: string;
+  onChange?: (text: string) => void;
 }) {
   if (!editable) {
-    return <div style={style}>{value}</div>;
+    return (
+      <div style={style}>
+        <HighlightedText text={value} accentText={accentText} accentColor={accentColor} />
+      </div>
+    );
   }
 
   return (
     <textarea
       value={value}
-      onChange={(event) => onTextChange?.(event.target.value)}
+      onChange={(event) => onChange?.(event.target.value)}
       spellCheck={false}
       style={{
         ...style,
         width: '100%',
-        height: '100%',
         minHeight: '100%',
         background: 'transparent',
         border: 0,
@@ -117,8 +266,7 @@ function EditableText({
         padding: 0,
         margin: 0,
         resize: 'none',
-        overflowY: 'auto',
-        overflowX: 'hidden',
+        overflow: 'hidden',
         boxSizing: 'border-box',
         cursor: 'text',
       }}
@@ -126,28 +274,24 @@ function EditableText({
   );
 }
 
-function LengthWarning({ show, exportMode, compact }: { show: boolean; exportMode?: boolean; compact?: boolean }) {
-  if (!show || exportMode || compact) return null;
-
+function MetaPill({ children, system, exportMode, compact }: { children: ReactNode; system: VisualSystem; exportMode?: boolean; compact?: boolean }) {
   return (
     <div
       style={{
-        position: 'absolute',
-        right: px(82),
-        bottom: px(110),
-        zIndex: 4,
-        border: '1px solid rgba(17,17,17,0.22)',
+        border: `${Math.max(1, px(2, exportMode, compact))}px solid ${system.line}`,
         borderRadius: 999,
-        padding: '5px 10px',
-        background: 'rgba(244,240,230,0.9)',
-        color: '#111111',
-        fontSize: '10px',
+        padding: `${px(8, exportMode, compact)}px ${px(24, exportMode, compact)}px`,
+        fontSize: `${Math.max(7, px(18, exportMode, compact))}px`,
         fontWeight: 900,
-        letterSpacing: '-0.02em',
+        letterSpacing: '-0.035em',
         lineHeight: 1,
+        maxWidth: '76%',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap',
       }}
     >
-      texto longo
+      {children}
     </div>
   );
 }
@@ -159,17 +303,27 @@ export default function TemplateSlide({
   templateId,
   watermark,
   logoUrl,
+  fontPresetId,
+  colorPaletteId,
+  accentColor,
   editable,
   exportMode,
   compact,
   onTextChange,
+  onSlideChange,
 }: TemplateSlideProps) {
   const template = getCarouselTemplate(templateId);
-  const system = paperSystem;
+  const system = getVisualSystem(fontPresetId, colorPaletteId, accentColor || template.accentColor);
   const isCover = slideIndex === 0 || slide.type === 'hook';
   const isCTA = slideIndex === totalSlides - 1 && !isCover;
   const label = brandLabel(watermark);
-  const text = slide.text || 'Clique para escrever';
+  const content = getSlideContent(slide, isCover, isCTA, label);
+
+  function updateTextField(field: keyof Pick<Slide, 'tagline' | 'title' | 'body' | 'cta'>, value: string) {
+    const nextSlide = { ...slide, [field]: value };
+    onSlideChange?.({ [field]: value, text: joinSlideText(nextSlide) });
+    if (!onSlideChange && field === 'title') onTextChange?.(value);
+  }
 
   return (
     <div
@@ -183,41 +337,55 @@ export default function TemplateSlide({
         fontFamily: system.font,
       }}
     >
+      {slide.image_url && (
+        <img
+          src={slide.image_url}
+          alt=""
+          style={{
+            position: 'absolute',
+            inset: 0,
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            opacity: colorPaletteId === 'night-paper' ? 0.28 : 0.16,
+            filter: colorPaletteId === 'night-paper' ? 'grayscale(1) contrast(1.1)' : 'grayscale(1) contrast(0.9)',
+          }}
+        />
+      )}
+
       <div
         style={{
           position: 'absolute',
           inset: 0,
           backgroundImage: system.texture,
           backgroundSize: exportMode ? '32px 32px' : compact ? '7px 7px' : '15px 15px',
-          opacity: 0.3,
+          opacity: system.textureOpacity,
         }}
       />
 
       {isCover ? (
         <CoverLayout
-          text={text}
-          label={label}
+          content={content}
           logoUrl={logoUrl}
           system={system}
           editable={editable}
           exportMode={exportMode}
           compact={compact}
-          onTextChange={onTextChange}
+          onTextChange={updateTextField}
         />
       ) : (
         <BodyLayout
-          text={text}
+          content={content}
           label={label}
           logoUrl={logoUrl}
           slideIndex={slideIndex}
           totalSlides={totalSlides}
           isCTA={isCTA}
-          templateName={template.name}
           system={system}
           editable={editable}
           exportMode={exportMode}
           compact={compact}
-          onTextChange={onTextChange}
+          onTextChange={updateTextField}
         />
       )}
     </div>
@@ -225,86 +393,92 @@ export default function TemplateSlide({
 }
 
 function CoverLayout(props: {
-  text: string;
-  label: string;
+  content: SlideContent;
   logoUrl?: string;
   system: VisualSystem;
   editable?: boolean;
   exportMode?: boolean;
   compact?: boolean;
-  onTextChange?: (text: string) => void;
+  onTextChange: (field: keyof Pick<Slide, 'tagline' | 'title' | 'body' | 'cta'>, value: string) => void;
 }) {
-  const { text, label, logoUrl, system, editable, exportMode, compact, onTextChange } = props;
-  const metrics = getTextMetrics(text, 'cover', exportMode, compact);
+  const { content, logoUrl, system, editable, exportMode, compact, onTextChange } = props;
+  const titleMetrics = getTitleMetrics(content.title, 'cover', exportMode, compact);
+  const bodyMetrics = getBodyMetrics(content.body, exportMode, compact);
 
   return (
     <>
       <div style={{ position: 'absolute', top: px(82, exportMode, compact), left: 0, right: 0, display: 'flex', justifyContent: 'center', zIndex: 2 }}>
-        <div
-          style={{
-            border: `${Math.max(1, px(2, exportMode, compact))}px solid ${system.ink}`,
-            borderRadius: 999,
-            padding: `${px(9, exportMode, compact)}px ${px(28, exportMode, compact)}px`,
-            fontSize: `${Math.max(7, px(20, exportMode, compact))}px`,
-            fontWeight: 900,
-            letterSpacing: '-0.035em',
-            lineHeight: 1,
-            maxWidth: '76%',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {label}
-        </div>
+        <MetaPill system={system} exportMode={exportMode} compact={compact}>{content.tagline}</MetaPill>
       </div>
 
       {logoUrl && <img src={logoUrl} alt="" style={{ position: 'absolute', top: px(78, exportMode, compact), right: px(82, exportMode, compact), maxWidth: px(150, exportMode, compact), maxHeight: px(52, exportMode, compact), objectFit: 'contain', zIndex: 2 }} />}
 
-      <div style={{ position: 'absolute', left: px(86, exportMode, compact), right: px(86, exportMode, compact), top: '25%', bottom: '21%', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1 }}>
-        <EditableText
-          value={text}
+      <div style={{ position: 'absolute', left: px(84, exportMode, compact), right: px(84, exportMode, compact), top: '26%', bottom: '19%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: px(34, exportMode, compact), zIndex: 1 }}>
+        <TextSlot
+          value={content.title}
           editable={editable}
-          onTextChange={onTextChange}
+          onChange={(value) => onTextChange('title', value)}
+          accentText={content.accentText}
+          accentColor={system.accent}
           style={{
             color: system.ink,
             fontFamily: system.displayFont,
-            fontSize: metrics.fontSize,
-            fontWeight: 950,
-            lineHeight: metrics.lineHeight,
-            letterSpacing: '-0.045em',
+            fontSize: titleMetrics.fontSize,
+            fontWeight: system.titleWeight,
+            lineHeight: titleMetrics.lineHeight,
+            letterSpacing: system.letterSpacing,
             textAlign: 'center',
             whiteSpace: 'pre-wrap',
             wordBreak: 'break-word',
-          }}
+            textWrap: 'balance',
+          } as CSSProperties}
         />
+
+        {content.body && (
+          <TextSlot
+            value={content.body}
+            editable={editable}
+            onChange={(value) => onTextChange('body', value)}
+            accentColor={system.accent}
+            style={{
+              color: system.muted,
+              fontFamily: system.font,
+              fontSize: bodyMetrics.fontSize,
+              fontWeight: system.bodyWeight,
+              lineHeight: bodyMetrics.lineHeight,
+              letterSpacing: '-0.015em',
+              textAlign: 'center',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+              maxWidth: '92%',
+            }}
+          />
+        )}
       </div>
 
-      <LengthWarning show={!!editable && isTextTooLong(text, 'cover')} exportMode={exportMode} compact={compact} />
       <div style={{ position: 'absolute', bottom: px(82, exportMode, compact), left: 0, right: 0, textAlign: 'center', fontSize: `${Math.max(12, px(38, exportMode, compact))}px`, fontWeight: 900, lineHeight: 1, zIndex: 2 }}>→</div>
     </>
   );
 }
 
 function BodyLayout(props: {
-  text: string;
+  content: SlideContent;
   label: string;
   logoUrl?: string;
   slideIndex: number;
   totalSlides: number;
   isCTA: boolean;
-  templateName: string;
   system: VisualSystem;
   editable?: boolean;
   exportMode?: boolean;
   compact?: boolean;
-  onTextChange?: (text: string) => void;
+  onTextChange: (field: keyof Pick<Slide, 'tagline' | 'title' | 'body' | 'cta'>, value: string) => void;
 }) {
-  const { text, label, logoUrl, slideIndex, totalSlides, isCTA, system, editable, exportMode, compact, onTextChange } = props;
+  const { content, label, logoUrl, slideIndex, totalSlides, isCTA, system, editable, exportMode, compact, onTextChange } = props;
   const number = String(slideIndex + 1).padStart(2, '0');
   const total = String(totalSlides).padStart(2, '0');
-  const variant = isCTA ? 'cta' : 'body';
-  const metrics = getTextMetrics(text, variant, exportMode, compact);
+  const titleMetrics = getTitleMetrics(content.title, isCTA ? 'cta' : 'body', exportMode, compact);
+  const bodyMetrics = getBodyMetrics(content.body, exportMode, compact);
 
   return (
     <>
@@ -314,7 +488,7 @@ function BodyLayout(props: {
             width: px(76, exportMode, compact),
             height: px(76, exportMode, compact),
             minWidth: px(76, exportMode, compact),
-            border: `${Math.max(1, px(2, exportMode, compact))}px solid ${system.ink}`,
+            border: `${Math.max(1, px(2, exportMode, compact))}px solid ${system.line}`,
             borderRadius: '50%',
             display: 'flex',
             alignItems: 'center',
@@ -326,31 +500,66 @@ function BodyLayout(props: {
         >
           {number}
         </div>
-        <div style={{ flex: 1, height: Math.max(1, px(2, exportMode, compact)), background: system.ink }} />
+        <div style={{ flex: 1, height: Math.max(1, px(2, exportMode, compact)), background: system.line }} />
       </div>
 
-      <div style={{ position: 'absolute', top: px(188, exportMode, compact), left: px(82, exportMode, compact), right: px(82, exportMode, compact), bottom: px(154, exportMode, compact), display: 'flex', alignItems: isCTA ? 'center' : 'flex-start', zIndex: 1 }}>
-        <EditableText
-          value={text}
+      <div style={{ position: 'absolute', top: px(190, exportMode, compact), left: px(82, exportMode, compact), right: px(82, exportMode, compact), bottom: px(154, exportMode, compact), display: 'flex', flexDirection: 'column', justifyContent: isCTA ? 'center' : 'flex-start', gap: px(30, exportMode, compact), zIndex: 1 }}>
+        {content.tagline && isCTA && (
+          <div style={{ color: system.accent, fontSize: `${Math.max(8, px(22, exportMode, compact))}px`, fontWeight: 900, lineHeight: 1, letterSpacing: '-0.02em' }}>
+            {content.tagline}
+          </div>
+        )}
+
+        <TextSlot
+          value={content.title}
           editable={editable}
-          onTextChange={onTextChange}
+          onChange={(value) => onTextChange('title', value)}
+          accentText={content.accentText}
+          accentColor={system.accent}
           style={{
             color: system.ink,
             fontFamily: system.displayFont,
-            fontSize: metrics.fontSize,
-            fontWeight: 900,
-            lineHeight: metrics.lineHeight,
-            letterSpacing: '-0.035em',
+            fontSize: titleMetrics.fontSize,
+            fontWeight: system.titleWeight,
+            lineHeight: titleMetrics.lineHeight,
+            letterSpacing: system.letterSpacing,
             textAlign: 'left',
             whiteSpace: 'pre-wrap',
             wordBreak: 'break-word',
-          }}
+            textWrap: 'balance',
+          } as CSSProperties}
         />
+
+        {content.body && (
+          <TextSlot
+            value={content.body}
+            editable={editable}
+            onChange={(value) => onTextChange('body', value)}
+            accentColor={system.accent}
+            style={{
+              color: system.muted,
+              fontFamily: system.font,
+              fontSize: bodyMetrics.fontSize,
+              fontWeight: system.bodyWeight,
+              lineHeight: bodyMetrics.lineHeight,
+              letterSpacing: '-0.012em',
+              textAlign: 'left',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+              maxWidth: isCTA ? '86%' : '96%',
+            }}
+          />
+        )}
+
+        {content.cta && (
+          <div style={{ alignSelf: 'flex-start', borderRadius: 999, background: system.accent, color: system.bg, padding: `${px(12, exportMode, compact)}px ${px(22, exportMode, compact)}px`, fontSize: `${Math.max(8, px(20, exportMode, compact))}px`, fontWeight: 900, lineHeight: 1 }}>
+            {content.cta}
+          </div>
+        )}
       </div>
 
       {logoUrl && <img src={logoUrl} alt="" style={{ position: 'absolute', left: px(82, exportMode, compact), bottom: px(78, exportMode, compact), maxWidth: px(140, exportMode, compact), maxHeight: px(44, exportMode, compact), objectFit: 'contain', zIndex: 2 }} />}
 
-      <LengthWarning show={!!editable && isTextTooLong(text, variant)} exportMode={exportMode} compact={compact} />
       <div
         style={{
           position: 'absolute',

@@ -380,7 +380,7 @@ export default function TemplateSlide({
         fontFamily: system.font,
       }}
     >
-      {slide.image_url && (
+      {slide.image_url && template.layout !== 'image_editorial' && (
         <img
           src={slide.image_url}
           alt=""
@@ -406,7 +406,33 @@ export default function TemplateSlide({
         }}
       />
 
-      {isCover ? (
+      {template.layout === 'image_editorial' && isCover ? (
+        <ImageCoverLayout
+          content={content}
+          imageUrl={slide.image_url}
+          logoUrl={logoUrl}
+          system={system}
+          editable={editable}
+          exportMode={exportMode}
+          compact={compact}
+          onTextChange={updateTextField}
+        />
+      ) : template.layout === 'image_editorial' ? (
+        <ImageBodyLayout
+          content={content}
+          label={label}
+          imageUrl={slide.image_url}
+          logoUrl={logoUrl}
+          slideIndex={slideIndex}
+          totalSlides={totalSlides}
+          isCTA={isCTA}
+          system={system}
+          editable={editable}
+          exportMode={exportMode}
+          compact={compact}
+          onTextChange={updateTextField}
+        />
+      ) : isCover ? (
         <CoverLayout
           content={content}
           logoUrl={logoUrl}
@@ -432,6 +458,174 @@ export default function TemplateSlide({
         />
       )}
     </div>
+  );
+}
+
+function ImageCoverLayout(props: {
+  content: SlideContent;
+  imageUrl?: string;
+  logoUrl?: string;
+  system: VisualSystem;
+  editable?: boolean;
+  exportMode?: boolean;
+  compact?: boolean;
+  onTextChange: (field: keyof Pick<Slide, 'tagline' | 'title' | 'body' | 'cta'>, value: string) => void;
+}) {
+  const { content, imageUrl, logoUrl, system, editable, exportMode, compact, onTextChange } = props;
+  const titleMetrics = getTitleMetrics(content.title, 'cover', exportMode, compact);
+  const bodyMetrics = getBodyMetrics(content.body, 'cover', content.title, exportMode, compact);
+
+  return (
+    <>
+      {imageUrl && (
+        <div style={{ position: 'absolute', inset: 0, zIndex: 0 }}>
+          <img src={imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', filter: 'grayscale(1) contrast(1.04)' }} />
+          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(17,17,17,0.10) 0%, rgba(17,17,17,0.28) 48%, rgba(244,240,230,0.96) 78%)' }} />
+        </div>
+      )}
+
+      <div style={{ position: 'absolute', top: px(72, exportMode, compact), left: px(72, exportMode, compact), right: px(72, exportMode, compact), display: 'flex', justifyContent: 'space-between', alignItems: 'center', zIndex: 2 }}>
+        <MetaPill system={system} exportMode={exportMode} compact={compact}>{content.tagline}</MetaPill>
+        {logoUrl && <img src={logoUrl} alt="" style={{ maxWidth: px(142, exportMode, compact), maxHeight: px(48, exportMode, compact), objectFit: 'contain' }} />}
+      </div>
+
+      <div style={{ position: 'absolute', left: px(76, exportMode, compact), right: px(76, exportMode, compact), bottom: px(78, exportMode, compact), zIndex: 2, display: 'flex', flexDirection: 'column', gap: px(28, exportMode, compact) }}>
+        <TextSlot
+          value={content.title}
+          editable={editable}
+          onChange={(value) => onTextChange('title', value)}
+          accentText={content.accentText}
+          accentColor={system.accent}
+          style={{
+            color: system.ink,
+            fontFamily: system.displayFont,
+            fontSize: titleMetrics.fontSize,
+            fontWeight: system.titleWeight,
+            lineHeight: titleMetrics.lineHeight,
+            letterSpacing: system.letterSpacing,
+            textAlign: 'left',
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word',
+          }}
+        />
+        {content.body && (
+          <TextSlot
+            value={content.body}
+            editable={editable}
+            onChange={(value) => onTextChange('body', value)}
+            accentColor={system.accent}
+            style={{
+              color: system.muted,
+              fontFamily: system.font,
+              fontSize: bodyMetrics.fontSize,
+              fontWeight: system.bodyWeight,
+              lineHeight: bodyMetrics.lineHeight,
+              letterSpacing: '-0.015em',
+              textAlign: 'left',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+              maxWidth: bodyMetrics.maxWidth,
+            }}
+          />
+        )}
+        <div style={{ width: px(128, exportMode, compact), height: Math.max(2, px(8, exportMode, compact)), background: system.accent }} />
+      </div>
+    </>
+  );
+}
+
+function ImageBodyLayout(props: {
+  content: SlideContent;
+  label: string;
+  imageUrl?: string;
+  logoUrl?: string;
+  slideIndex: number;
+  totalSlides: number;
+  isCTA: boolean;
+  system: VisualSystem;
+  editable?: boolean;
+  exportMode?: boolean;
+  compact?: boolean;
+  onTextChange: (field: keyof Pick<Slide, 'tagline' | 'title' | 'body' | 'cta'>, value: string) => void;
+}) {
+  const { content, label, imageUrl, logoUrl, slideIndex, totalSlides, isCTA, system, editable, exportMode, compact, onTextChange } = props;
+  const number = String(slideIndex + 1).padStart(2, '0');
+  const total = String(totalSlides).padStart(2, '0');
+  const titleMetrics = getTitleMetrics(content.title, isCTA ? 'cta' : 'body', exportMode, compact);
+  const bodyMetrics = getBodyMetrics(content.body, isCTA ? 'cta' : 'body', content.title, exportMode, compact);
+
+  return (
+    <>
+      {imageUrl && (
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '34%', overflow: 'hidden', zIndex: 0 }}>
+          <img src={imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', filter: 'grayscale(1) contrast(1.08)' }} />
+          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(17,17,17,0.16), rgba(244,240,230,0.22))' }} />
+        </div>
+      )}
+
+      <div style={{ position: 'absolute', top: px(72, exportMode, compact), left: px(76, exportMode, compact), right: px(76, exportMode, compact), display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: imageUrl ? '#f8f3e8' : system.ink, zIndex: 2 }}>
+        <div style={{ fontSize: `${Math.max(12, px(34, exportMode, compact))}px`, fontWeight: 950, lineHeight: 1 }}>{number}</div>
+        <div style={{ fontSize: `${Math.max(7, px(18, exportMode, compact))}px`, fontWeight: 900, lineHeight: 1 }}>{number}/{total}</div>
+      </div>
+
+      <div style={{ position: 'absolute', left: px(76, exportMode, compact), right: px(76, exportMode, compact), top: imageUrl ? '39%' : px(160, exportMode, compact), bottom: px(142, exportMode, compact), display: 'flex', flexDirection: 'column', justifyContent: isCTA ? 'center' : 'flex-start', gap: px(28, exportMode, compact), zIndex: 1 }}>
+        {content.tagline && isCTA && (
+          <div style={{ color: system.accent, fontSize: `${Math.max(8, px(22, exportMode, compact))}px`, fontWeight: 900, lineHeight: 1 }}>
+            {content.tagline}
+          </div>
+        )}
+        <TextSlot
+          value={content.title}
+          editable={editable}
+          onChange={(value) => onTextChange('title', value)}
+          accentText={content.accentText}
+          accentColor={system.accent}
+          style={{
+            color: system.ink,
+            fontFamily: system.displayFont,
+            fontSize: titleMetrics.fontSize,
+            fontWeight: system.titleWeight,
+            lineHeight: titleMetrics.lineHeight,
+            letterSpacing: system.letterSpacing,
+            textAlign: 'left',
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word',
+          }}
+        />
+        {content.body && (
+          <TextSlot
+            value={content.body}
+            editable={editable}
+            onChange={(value) => onTextChange('body', value)}
+            accentColor={system.accent}
+            style={{
+              color: system.muted,
+              fontFamily: system.font,
+              fontSize: bodyMetrics.fontSize,
+              fontWeight: system.bodyWeight,
+              lineHeight: bodyMetrics.lineHeight,
+              letterSpacing: '-0.012em',
+              textAlign: 'left',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+              maxWidth: bodyMetrics.maxWidth,
+            }}
+          />
+        )}
+        {content.cta && (
+          <div style={{ alignSelf: 'flex-start', borderRadius: 999, background: system.accent, color: system.bg, padding: `${px(12, exportMode, compact)}px ${px(22, exportMode, compact)}px`, fontSize: `${Math.max(8, px(20, exportMode, compact))}px`, fontWeight: 900, lineHeight: 1 }}>
+            {content.cta}
+          </div>
+        )}
+      </div>
+
+      {logoUrl && <img src={logoUrl} alt="" style={{ position: 'absolute', left: px(76, exportMode, compact), bottom: px(72, exportMode, compact), maxWidth: px(132, exportMode, compact), maxHeight: px(42, exportMode, compact), objectFit: 'contain', zIndex: 2 }} />}
+
+      <div style={{ position: 'absolute', left: px(76, exportMode, compact), right: px(76, exportMode, compact), bottom: px(70, exportMode, compact), display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: system.muted, fontSize: `${Math.max(6, px(18, exportMode, compact))}px`, fontWeight: 850, lineHeight: 1, zIndex: 2 }}>
+        <span>{isCTA ? 'proximo passo' : label}</span>
+        <span>{imageUrl ? 'imagem da fonte' : 'manifesto'}</span>
+      </div>
+    </>
   );
 }
 

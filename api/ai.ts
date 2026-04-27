@@ -60,7 +60,7 @@ export default async function handler(req: any, res: any) {
 
   if (!OPENROUTER_API_KEY) {
     return res.status(503).json({
-      error: `No AI provider available. ${providerErrors.join(' | ')}`,
+      error: `IA nao configurada neste ambiente. Configure GEMINI_API_KEY, VITE_GEMINI_API_KEY, OPENROUTER_API_KEY ou VITE_OPENROUTER_API_KEY para gerar carrosseis. ${providerErrors.join(' | ')}`,
     });
   }
 

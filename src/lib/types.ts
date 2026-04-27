@@ -79,6 +79,11 @@ export interface ContentBrief {
   preset_id: string;
   template_id: string;
   source_notes?: string;
+  source_type?: 'manual' | 'youtube' | 'rss';
+  source_url?: string;
+  source_title?: string;
+  source_image_url?: string;
+  source_excerpt?: string;
 }
 
 export interface ContentStrategy {
@@ -185,7 +190,7 @@ export interface CarouselTemplate {
   accentColor: string;
   textColor: string;
   badge: string;
-  layout: 'editorial' | 'authority' | 'proof' | 'launch' | 'minimal';
+  layout: 'editorial' | 'image_editorial' | 'authority' | 'proof' | 'launch' | 'minimal';
 }
 
 // ============================================================

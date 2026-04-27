@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowRight, Check, Loader2, RefreshCw, Sparkles, Target, Wand2 } from 'lucide-react';
+import { ArrowRight, Check, FileText, Link2, Loader2, RefreshCw, Rss, Sparkles, Target, Wand2, Youtube } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import type { ContentBrief, ContentStrategy, Project } from '../lib/types';
 import * as db from '../lib/database';
 import { carouselTemplates, getCarouselTemplate } from '../lib/carouselTemplates';
 import { defaultColorPaletteId, defaultFontPresetId, getCarouselColorPalette } from '../lib/carouselVisuals';
 import { expertContentPresets, getExpertContentPreset } from '../lib/contentPresets';
-import { generateContentStrategy } from '../services/geminiService';
+import { generateContentStrategy, generateSourceCarouselStrategy } from '../services/geminiService';
+import { fetchRssSource, getYouTubeThumbnail, type SourcePreview } from '../services/sourceService';
 
 const inputCls = 'w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500';
 
@@ -16,8 +17,10 @@ export default function CreateContent() {
   const [loadingProjects, setLoadingProjects] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [loadingSource, setLoadingSource] = useState(false);
   const [error, setError] = useState('');
   const [strategy, setStrategy] = useState<ContentStrategy | null>(null);
+  const [sourcePreview, setSourcePreview] = useState<SourcePreview | null>(null);
 
   const [brief, setBrief] = useState<ContentBrief>({
     project_id: '',
@@ -28,6 +31,11 @@ export default function CreateContent() {
     preset_id: expertContentPresets[0].id,
     template_id: carouselTemplates[0].id,
     source_notes: '',
+    source_type: 'manual',
+    source_url: '',
+    source_title: '',
+    source_image_url: '',
+    source_excerpt: '',
   });
 
   useEffect(() => {
@@ -47,6 +55,7 @@ export default function CreateContent() {
   function updateBrief<K extends keyof ContentBrief>(field: K, value: ContentBrief[K]) {
     setBrief((prev) => ({ ...prev, [field]: value }));
     setStrategy(null);
+    if (field === 'source_type' || field === 'source_url') setSourcePreview(null);
   }
 
   function choosePreset(id: string) {
@@ -60,20 +69,112 @@ export default function CreateContent() {
     setStrategy(null);
   }
 
+  function chooseSourceType(sourceType: ContentBrief['source_type']) {
+    setBrief((prev) => ({
+      ...prev,
+      source_type: sourceType,
+      template_id: sourceType === 'manual' ? prev.template_id : 'paper-manifesto-image',
+      source_url: sourceType === 'manual' ? '' : prev.source_url,
+      source_title: sourceType === 'manual' ? '' : prev.source_title,
+      source_image_url: sourceType === 'manual' ? '' : prev.source_image_url,
+      source_excerpt: sourceType === 'manual' ? '' : prev.source_excerpt,
+      source_notes: sourceType === 'manual' ? '' : prev.source_notes,
+    }));
+    setStrategy(null);
+    setSourcePreview(null);
+  }
+
+  async function handleLoadSource() {
+    if (!brief.source_url?.trim()) {
+      setError('Cole uma URL antes de buscar a fonte.');
+      return;
+    }
+
+    setLoadingSource(true);
+    setError('');
+    setStrategy(null);
+    try {
+      if (brief.source_type === 'youtube') {
+        const imageUrl = getYouTubeThumbnail(brief.source_url);
+        const preview: SourcePreview = {
+          title: brief.source_title || 'Video do YouTube',
+          url: brief.source_url,
+          imageUrl,
+          excerpt: brief.source_notes?.slice(0, 700) || '',
+          text: brief.source_notes || '',
+        };
+        setSourcePreview(preview);
+        setBrief((prev) => ({
+          ...prev,
+          source_title: prev.source_title || preview.title,
+          source_image_url: imageUrl,
+          source_excerpt: preview.excerpt,
+        }));
+      } else if (brief.source_type === 'rss') {
+        const preview = await fetchRssSource(brief.source_url);
+        setSourcePreview(preview);
+        setBrief((prev) => ({
+          ...prev,
+          topic: prev.topic || preview.title,
+          source_title: preview.title,
+          source_url: preview.url || prev.source_url,
+          source_image_url: preview.imageUrl,
+          source_excerpt: preview.excerpt,
+          source_notes: prev.source_notes || preview.text,
+        }));
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Nao consegui carregar essa fonte.');
+    } finally {
+      setLoadingSource(false);
+    }
+  }
+
   async function handleGenerate() {
-    if (!brief.topic.trim()) {
+    const isSourceFlow = brief.source_type === 'youtube' || brief.source_type === 'rss';
+    if (!isSourceFlow && !brief.topic.trim()) {
       setError('Descreva a ideia central do carrossel antes de gerar.');
       return;
+    }
+    if (isSourceFlow && !brief.source_url?.trim()) {
+      setError('Cole a URL da fonte antes de gerar.');
+      return;
+    }
+    if (brief.source_type === 'youtube' && !brief.source_notes?.trim()) {
+      setError('Cole a transcricao ou notas do video para gerar um carrossel fiel.');
+      return;
+    }
+    if (brief.source_type === 'rss' && !brief.source_notes?.trim() && !brief.source_excerpt?.trim()) {
+      setError('Busque a fonte RSS/portal antes de gerar, ou cole um trecho nas notas.');
+      return;
+    }
+
+    const preparedBrief: ContentBrief = {
+      ...brief,
+      source_image_url: brief.source_type === 'youtube'
+        ? brief.source_image_url || getYouTubeThumbnail(brief.source_url || '')
+        : brief.source_image_url,
+      source_title: brief.source_title || (brief.source_type === 'youtube' ? 'Video do YouTube' : brief.source_title),
+      source_excerpt: brief.source_excerpt || brief.source_notes?.slice(0, 700) || '',
+    };
+    if (preparedBrief.source_image_url !== brief.source_image_url || preparedBrief.source_excerpt !== brief.source_excerpt || preparedBrief.source_title !== brief.source_title) {
+      setBrief(preparedBrief);
     }
 
     setGenerating(true);
     setError('');
     try {
-      const result = await generateContentStrategy({
-        brief,
-        brandDNA: selectedProject?.brand_dna,
-        knowledgeBase: selectedProject?.knowledge_base,
-      });
+      const result = isSourceFlow
+        ? await generateSourceCarouselStrategy({
+            brief: preparedBrief,
+            brandDNA: selectedProject?.brand_dna,
+            knowledgeBase: selectedProject?.knowledge_base,
+          })
+        : await generateContentStrategy({
+            brief: preparedBrief,
+            brandDNA: selectedProject?.brand_dna,
+            knowledgeBase: selectedProject?.knowledge_base,
+          });
       setStrategy(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Não consegui gerar a estratégia agora. Tente novamente.');
@@ -89,7 +190,10 @@ export default function CreateContent() {
     try {
       const defaultPalette = getCarouselColorPalette(defaultColorPaletteId);
       const slideshow = await db.createSlideshow({
-        slides: strategy.slides,
+        slides: strategy.slides.map((slide) => ({
+          ...slide,
+          image_url: slide.image_url || brief.source_image_url || '',
+        })),
         caption: strategy.caption,
         theme: selectedTemplate.theme,
         status: 'reviewing',
@@ -166,8 +270,91 @@ export default function CreateContent() {
               </div>
             </div>
 
+            <div className="space-y-3">
+              <label className="premium-label">Fonte do carrossel</label>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {[
+                  { id: 'manual', label: 'Ideia manual', icon: FileText },
+                  { id: 'youtube', label: 'YouTube', icon: Youtube },
+                  { id: 'rss', label: 'RSS / Portal', icon: Rss },
+                ].map((option) => {
+                  const Icon = option.icon;
+                  const active = brief.source_type === option.id;
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() => chooseSourceType(option.id as ContentBrief['source_type'])}
+                      className={`flex items-center gap-3 rounded-xl border px-4 py-3 text-left transition-all ${active ? 'border-indigo-400 bg-indigo-500/10 text-white' : 'border-white/10 bg-white/[0.02] text-slate-400 hover:bg-white/[0.04]'}`}
+                    >
+                      <Icon className="w-4 h-4" />
+                      <span className="text-sm font-bold">{option.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {brief.source_type !== 'manual' && (
+              <div className="rounded-2xl border border-white/10 bg-white/[0.025] p-4 space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3">
+                  <div className="space-y-2">
+                    <label className="premium-label">{brief.source_type === 'youtube' ? 'URL do video' : 'URL do feed ou artigo'}</label>
+                    <input
+                      value={brief.source_url || ''}
+                      onChange={(e) => updateBrief('source_url', e.target.value)}
+                      placeholder={brief.source_type === 'youtube' ? 'https://www.youtube.com/watch?v=...' : 'https://portal.com/feed ou https://portal.com/artigo'}
+                      className={inputCls}
+                    />
+                  </div>
+                  <div className="flex items-end">
+                    <button
+                      type="button"
+                      onClick={handleLoadSource}
+                      disabled={loadingSource}
+                      className="premium-button-secondary h-[46px] flex items-center gap-2"
+                    >
+                      {loadingSource ? <Loader2 className="w-4 h-4 animate-spin" /> : <Link2 className="w-4 h-4" />}
+                      Buscar fonte
+                    </button>
+                  </div>
+                </div>
+
+                {brief.source_type === 'youtube' && (
+                  <div className="space-y-2">
+                    <label className="premium-label">Titulo opcional do video</label>
+                    <input
+                      value={brief.source_title || ''}
+                      onChange={(e) => updateBrief('source_title', e.target.value)}
+                      placeholder="Ex: A verdade sobre conteudo que vende"
+                      className={inputCls}
+                    />
+                  </div>
+                )}
+
+                {(sourcePreview || brief.source_image_url || brief.source_title) && (
+                  <div className={`grid grid-cols-1 gap-4 rounded-xl border border-white/10 bg-black/20 p-3 ${(sourcePreview?.imageUrl || brief.source_image_url) ? 'md:grid-cols-[120px_1fr]' : ''}`}>
+                    {(sourcePreview?.imageUrl || brief.source_image_url) && (
+                      <img
+                        src={sourcePreview?.imageUrl || brief.source_image_url}
+                        alt=""
+                        className="h-32 w-full md:h-full rounded-lg object-cover grayscale"
+                      />
+                    )}
+                    <div className="min-w-0 space-y-2">
+                      <p className="text-sm font-bold text-white line-clamp-2">{sourcePreview?.title || brief.source_title || 'Fonte carregada'}</p>
+                      <p className="text-xs text-slate-500 truncate">{sourcePreview?.url || brief.source_url}</p>
+                      {(sourcePreview?.excerpt || brief.source_excerpt) && (
+                        <p className="text-sm text-slate-400 leading-relaxed line-clamp-4">{sourcePreview?.excerpt || brief.source_excerpt}</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="space-y-2">
-              <label className="premium-label">Ideia central</label>
+              <label className="premium-label">{brief.source_type === 'manual' ? 'Ideia central' : 'Angulo desejado'}</label>
               <input
                 value={brief.topic}
                 onChange={(e) => updateBrief('topic', e.target.value)}

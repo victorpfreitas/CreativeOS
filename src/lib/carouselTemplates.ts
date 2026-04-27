@@ -12,6 +12,17 @@ export const carouselTemplates: CarouselTemplate[] = [
     badge: 'Manifesto',
     layout: 'editorial',
   },
+  {
+    id: 'paper-manifesto-image',
+    name: 'Manifesto Imagem',
+    description: 'A mesma pegada editorial do Manifesto Papel, agora com imagem da fonte em destaque.',
+    theme: 'light',
+    gradient: 'linear-gradient(135deg, #f5f0e6 0%, #e9dfcf 100%)',
+    accentColor: '#111111',
+    textColor: '#111111',
+    badge: 'Fonte viva',
+    layout: 'image_editorial',
+  },
 ];
 
 export function getCarouselTemplate(id?: string): CarouselTemplate {

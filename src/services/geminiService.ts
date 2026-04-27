@@ -228,6 +228,95 @@ Return ONLY a valid JSON object with this exact structure:
   };
 }
 
+export async function generateSourceCarouselStrategy(params: {
+  brief: ContentBrief;
+  brandDNA?: BrandDNA;
+  knowledgeBase?: string;
+}): Promise<ContentStrategy> {
+  const { brief, brandDNA, knowledgeBase } = params;
+  const preset = getExpertContentPreset(brief.preset_id);
+  const brandContext = brandDNA ? compileBrandDNA(brandDNA) : knowledgeBase;
+  const finalCta = brief.cta || preset.defaultCta;
+  const sourceLabel = brief.source_type === 'youtube' ? 'video do YouTube' : brief.source_type === 'rss' ? 'portal/RSS' : 'fonte externa';
+  const sourceText = compactText([
+    brief.source_title ? `Titulo da fonte: ${brief.source_title}` : '',
+    brief.source_url ? `URL: ${brief.source_url}` : '',
+    brief.source_excerpt ? `Resumo/trecho capturado: ${brief.source_excerpt}` : '',
+    brief.source_notes ? `Transcricao, notas ou texto completo:\n${brief.source_notes}` : '',
+  ].filter(Boolean).join('\n\n'));
+
+  const prompt = `You are a senior editorial strategist turning source material into premium Instagram carousels for high-ticket experts.
+
+Create one carousel from this ${sourceLabel}. Do not merely summarize the source: extract a strong thesis, a useful point of view, and a publishable narrative.
+
+Content preset: ${preset.label}
+Preset goal: ${preset.goal}
+Preset narrative style: ${preset.narrativePrompt}
+
+Brief:
+- Topic: ${brief.topic || brief.source_title || 'Source-based carousel'}
+- Goal: ${brief.goal}
+- Audience: ${brief.audience}
+- CTA: ${finalCta}
+
+Source material:
+---
+${sourceText || 'Not provided'}
+---
+
+${brandContext ? `Expert Brand DNA:\n${brandContext}\n` : ''}
+
+Rules:
+- Write in pt-BR.
+- Create exactly 5 slides: 1 hook, 3 body slides, 1 CTA slide.
+- Preserve the source's core idea, but translate it into sharp expert content.
+- If the source contains news, avoid pretending certainty beyond what the source says.
+- Never put labels like "Passo 1", "Slide" or numbering inside title/body.
+- title is the visual headline. It must be short, sharp, and readable.
+- body is optional support text. Use it only when it adds clarity.
+- tagline is a tiny label, max 32 characters.
+- accent_text must be an exact word or short phrase that exists inside title. If nothing deserves emphasis, return an empty string.
+- Cover title: max 90 characters. Cover body: max 135 characters.
+- Body title: max 70 characters. Body body: max 170 characters.
+- CTA title: max 80 characters. CTA body: max 140 characters. CTA field: max 38 characters.
+- Avoid generic motivational language.
+- Include a readiness_score from 0 to 100.
+
+Return ONLY a valid JSON object with this exact structure:
+{
+  "promise": "The main promise of this carousel",
+  "angle": "The strategic angle or point of view",
+  "audience": "Who this is for",
+  "cta": "The final call to action",
+  "slide_outline": ["Slide 1 role", "Slide 2 role", "Slide 3 role", "Slide 4 role", "Slide 5 role"],
+  "readiness_score": 82,
+  "improvement_notes": ["One short note about what to improve before publishing"],
+  "slides": [
+    {"type":"hook","tagline":"fonte","title":"Slide 1 title","body":"Optional support text","cta":"","accent_text":"exact title phrase"},
+    {"type":"body","tagline":"","title":"Slide 2 title","body":"Slide 2 body","cta":"","accent_text":"exact title phrase"},
+    {"type":"body","tagline":"","title":"Slide 3 title","body":"Slide 3 body","cta":"","accent_text":"exact title phrase"},
+    {"type":"body","tagline":"","title":"Slide 4 title","body":"Slide 4 body","cta":"","accent_text":"exact title phrase"},
+    {"type":"body","tagline":"proximo passo","title":"Slide 5 CTA title","body":"CTA body","cta":"${finalCta}","accent_text":"exact title phrase"}
+  ],
+  "caption": "A concise caption with a natural CTA and 3-5 relevant hashtags"
+}`;
+
+  const text = await callAI(prompt);
+  const result = parseAIJson<Omit<ContentStrategy, 'slides'> & { slides: Array<Partial<Slide>> }>(text, 'estrategia a partir da fonte');
+  const slides = (result.slides || []).slice(0, 5).map((slide, index) => ({
+    ...normalizeStructuredSlide(slide, index, finalCta),
+    image_url: slide.image_url || brief.source_image_url || '',
+  }));
+
+  return {
+    ...result,
+    readiness_score: Math.max(0, Math.min(100, Number(result.readiness_score) || 0)),
+    improvement_notes: Array.isArray(result.improvement_notes) ? result.improvement_notes : [],
+    slide_outline: Array.isArray(result.slide_outline) ? result.slide_outline.slice(0, 5) : [],
+    slides,
+  };
+}
+
 // ---- Generate Hooks ----
 
 export async function generateHooks(params: {

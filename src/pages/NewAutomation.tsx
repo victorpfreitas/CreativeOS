@@ -20,6 +20,9 @@ export default function NewAutomation() {
   const [narrativePrompt, setNarrativePrompt] = useState('');
   const [formatPrompt, setFormatPrompt] = useState('');
   const [softCta, setSoftCta] = useState('');
+  const [sourceMode, setSourceMode] = useState<'topic' | 'youtube'>('topic');
+  const [youtubeSourceUrl, setYouTubeSourceUrl] = useState('');
+  const [youtubeTranscriptLanguage, setYouTubeTranscriptLanguage] = useState('pt');
   const [scheduleDays, setScheduleDays] = useState<string[]>(['mon', 'wed', 'fri']);
   const [scheduleTime, setScheduleTime] = useState('10:00');
   const [hookCollectionId, setHookCollectionId] = useState('');
@@ -57,6 +60,9 @@ export default function NewAutomation() {
         narrative_prompt: narrativePrompt,
         format_prompt: formatPrompt,
         soft_cta: softCta,
+        source_mode: sourceMode,
+        youtube_source_url: sourceMode === 'youtube' ? youtubeSourceUrl.trim() : '',
+        youtube_transcript_language: sourceMode === 'youtube' ? youtubeTranscriptLanguage.trim() || 'pt' : '',
         schedule_days: scheduleDays,
         schedule_time: scheduleTime,
         schedule_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -71,6 +77,8 @@ export default function NewAutomation() {
           narrativePrompt: narrativePrompt,
           knowledgeBase: project?.knowledge_base,
           count: 10,
+          sourceType: sourceMode === 'youtube' ? 'youtube' : undefined,
+          sourceUrl: sourceMode === 'youtube' ? youtubeSourceUrl.trim() : undefined,
         });
         await db.createHooks(hookTexts.map((text) => ({ automation_id: automation.id, text })));
       } catch (aiErr) {
@@ -117,6 +125,33 @@ export default function NewAutomation() {
               {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
             {projects.length === 0 && <p className="text-xs text-amber-500/80 mt-2">No projects found. <Link to="/projects" className="underline font-bold text-amber-500">Create one first</Link>.</p>}
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-black/20 p-5 space-y-4">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="premium-label">Base da automacao</p>
+                <p className="text-sm text-slate-500 mt-1">Escolha se a rotina nasce de um tema livre ou de um video fixo do YouTube com transcript automatica.</p>
+              </div>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => setSourceMode('topic')} className={`rounded-xl px-3 py-2 text-xs font-bold transition-colors ${sourceMode === 'topic' ? 'bg-indigo-600 text-white' : 'bg-white/5 text-slate-400 hover:bg-white/10'}`}>Tema livre</button>
+                <button type="button" onClick={() => setSourceMode('youtube')} className={`rounded-xl px-3 py-2 text-xs font-bold transition-colors ${sourceMode === 'youtube' ? 'bg-indigo-600 text-white' : 'bg-white/5 text-slate-400 hover:bg-white/10'}`}>Video do YouTube</button>
+              </div>
+            </div>
+
+            {sourceMode === 'youtube' && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2 md:col-span-2">
+                  <label className="premium-label">URL fixa do video</label>
+                  <input type="text" value={youtubeSourceUrl} onChange={(e) => setYouTubeSourceUrl(e.target.value)} placeholder="https://www.youtube.com/watch?v=..." className="premium-input w-full" />
+                  <p className="text-xs text-slate-500">Quando esta URL existir, a automacao tentara carregar thumbnail e transcript antes de gerar hooks e drafts.</p>
+                </div>
+                <div className="space-y-2">
+                  <label className="premium-label">Idioma preferido da transcript</label>
+                  <input type="text" value={youtubeTranscriptLanguage} onChange={(e) => setYouTubeTranscriptLanguage(e.target.value)} placeholder="pt, en, es..." className="premium-input w-full" />
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -224,7 +259,7 @@ export default function NewAutomation() {
           <button 
             type="button" 
             onClick={handleSave} 
-            disabled={saving || !projectId || !name.trim() || !niche.trim()} 
+            disabled={saving || !projectId || !name.trim() || !niche.trim() || (sourceMode === 'youtube' && !youtubeSourceUrl.trim())} 
             className="premium-button-primary flex items-center gap-3 group disabled:opacity-30 disabled:grayscale"
           >
             {saving ? (

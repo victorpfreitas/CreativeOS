@@ -39,6 +39,11 @@ type CreateSlideshowInput = {
   source_capture_url?: string;
   source_capture_status?: Slideshow['source_capture_status'];
   source_capture_note?: string;
+  source_transcript?: string;
+  source_transcript_language?: string;
+  source_transcript_source?: Slideshow['source_transcript_source'];
+  source_transcript_status?: Slideshow['source_transcript_status'];
+  source_transcript_note?: string;
   scheduled_for?: string | null;
 };
 
@@ -65,6 +70,11 @@ type UpdateSlideshowInput = Partial<{
   source_capture_url: string;
   source_capture_status: Slideshow['source_capture_status'];
   source_capture_note: string;
+  source_transcript: string;
+  source_transcript_language: string;
+  source_transcript_source: Slideshow['source_transcript_source'];
+  source_transcript_status: Slideshow['source_transcript_status'];
+  source_transcript_note: string;
   exported_at: string | null;
   scheduled_for: string | null;
 }>;

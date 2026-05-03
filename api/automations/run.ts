@@ -11,9 +11,21 @@ import {
 } from 'firebase/firestore';
 import { serverDb } from '../_lib/firebase-server';
 import { generateAiText } from '../_lib/ai-provider';
-import type { Automation, BrandDNA, Hook, Project, Slide, Slideshow } from '../../src/lib/types';
+import { fetchYouTubeTranscriptSource, getRequestOrigin, type YouTubeTranscriptResult } from '../_lib/youtube-transcript-client';
+import type { Automation, BrandDNA, ContentBrief, Hook, Project, Slide, Slideshow } from '../../src/lib/types';
 import { assessQueueState, getAutomationHealthStatus, getAutomationIssues } from '../../src/lib/queueUtils';
 import { resolveSourceCapture } from '../_lib/source-capture';
+
+type AutomationWithProject = Automation & { project?: Project };
+
+type AutomationSourceContext = {
+  brief: ContentBrief;
+  thumbnailUrl: string;
+  sourceTitle: string;
+  sourceNotes: string;
+  captureFallbackImageUrl: string;
+  note: string;
+};
 
 function compactText(value?: string) {
   return (value || '')
@@ -27,13 +39,13 @@ function compileBrandDNA(dna?: BrandDNA) {
   const parts: string[] = [];
   if (dna.bio) parts.push(`Bio do perfil: ${dna.bio}`);
   if (dna.market) parts.push(`Mercado / Nicho: ${dna.market}`);
-  if (dna.target_audience) parts.push(`Audiência-alvo: ${dna.target_audience}`);
+  if (dna.target_audience) parts.push(`Audiencia-alvo: ${dna.target_audience}`);
   if (dna.tone_of_voice) parts.push(`Tom de voz: ${dna.tone_of_voice}`);
   if (dna.key_messages) parts.push(`Mensagens-chave: ${dna.key_messages}`);
   if (dna.core_promise) parts.push(`Promessa central: ${dna.core_promise}`);
-  if (dna.unique_mechanism) parts.push(`Mecanismo único: ${dna.unique_mechanism}`);
+  if (dna.unique_mechanism) parts.push(`Mecanismo unico: ${dna.unique_mechanism}`);
   if (dna.proof_points) parts.push(`Provas e credenciais: ${dna.proof_points}`);
-  if (dna.content_angles) parts.push(`Ângulos recorrentes: ${dna.content_angles}`);
+  if (dna.content_angles) parts.push(`Angulos recorrentes: ${dna.content_angles}`);
   return parts.join('\n');
 }
 
@@ -45,7 +57,7 @@ function parseAIJson<T>(text: string, label: string): T {
   try {
     return JSON.parse(cleanJsonText(text)) as T;
   } catch {
-    throw new Error(`A IA retornou um formato inválido para ${label}.`);
+    throw new Error(`A IA retornou um formato invalido para ${label}.`);
   }
 }
 
@@ -131,7 +143,7 @@ function normalizeSlideText(text: string, index: number) {
     .replace(/^\s*(passo|slide|etapa)\s*\d+\s*[:.)-]\s*/i, '')
     .replace(/[ \t]+\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
-    .trim() || (index === 0 ? 'Uma ideia forte começa aqui' : 'Escreva este slide');
+    .trim() || (index === 0 ? 'Uma ideia forte comeca aqui' : 'Escreva este slide');
 }
 
 function normalizeGeneratedSlide(slide: Partial<Slide>, index: number, fallbackCta: string): Slide {
@@ -178,14 +190,111 @@ async function getUnusedHook(automationId: string) {
   return hooks[0] || null;
 }
 
-async function createHooksForAutomation(automation: Automation) {
+async function getCollectionImages(collectionId?: string | null) {
+  if (!collectionId) return [] as string[];
+  const snap = await getDocs(query(collection(serverDb, 'collection_images'), where('collection_id', '==', collectionId)));
+  return snap.docs.map((item) => String(item.data().url || '')).filter(Boolean);
+}
+
+function getRandomImage(images: string[]) {
+  return images.length > 0 ? images[Math.floor(Math.random() * images.length)] : '';
+}
+
+function getCoverImage(slides: Slide[]) {
+  return slides.find((slide) => slide.image_url)?.image_url || '';
+}
+
+function buildTranscriptStatus(source: YouTubeTranscriptResult['transcriptSource'], transcriptText: string) {
+  if (!transcriptText.trim()) return 'failed' as const;
+  return source === 'auto' ? 'partial' as const : 'ready' as const;
+}
+
+function buildTranscriptNote(source: YouTubeTranscriptResult) {
+  if (source.note.trim()) return source.note.trim();
+  if (source.transcriptSource === 'official') return 'Transcript carregada a partir de legenda oficial do YouTube.';
+  if (source.transcriptSource === 'auto') return 'Transcript carregada a partir de legenda automatica do YouTube.';
+  return 'Este video nao trouxe transcript automatica disponivel no momento.';
+}
+
+async function buildAutomationSourceContext(automation: AutomationWithProject, requestOrigin: string): Promise<AutomationSourceContext | null> {
+  if (automation.source_mode !== 'youtube' || !automation.youtube_source_url?.trim()) {
+    return null;
+  }
+
+  const source = await fetchYouTubeTranscriptSource(
+    requestOrigin,
+    automation.youtube_source_url,
+    automation.youtube_transcript_language || undefined
+  );
+  const sourceCapture = await resolveSourceCapture({
+    sourceType: 'youtube',
+    sourceUrl: automation.youtube_source_url,
+    sourceImageUrl: source.thumbnailUrl,
+    projectId: automation.project_id,
+    automationId: automation.id,
+  });
+  const transcriptText = compactText(source.transcriptText);
+  const note = buildTranscriptNote(source);
+  const captureUrl = sourceCapture.sourceCaptureUrl || source.thumbnailUrl || '';
+
+  return {
+    brief: {
+      project_id: automation.project_id,
+      topic: source.title || automation.name,
+      goal: '',
+      audience: '',
+      cta: automation.soft_cta || '',
+      preset_id: '',
+      template_id: '',
+      source_type: 'youtube',
+      source_url: automation.youtube_source_url,
+      source_title: source.title || 'Video do YouTube',
+      source_image_url: captureUrl,
+      source_excerpt: transcriptText.slice(0, 700),
+      source_notes: transcriptText,
+      source_capture_type: sourceCapture.sourceCaptureType,
+      source_capture_url: captureUrl,
+      source_capture_status: sourceCapture.sourceCaptureStatus,
+      source_capture_note: sourceCapture.sourceCaptureNote,
+      source_transcript: transcriptText,
+      source_transcript_language: source.transcriptLanguage || '',
+      source_transcript_source: source.transcriptSource,
+      source_transcript_status: buildTranscriptStatus(source.transcriptSource, transcriptText),
+      source_transcript_note: note,
+    },
+    thumbnailUrl: captureUrl,
+    sourceTitle: source.title || 'Video do YouTube',
+    sourceNotes: transcriptText,
+    captureFallbackImageUrl: captureUrl,
+    note,
+  };
+}
+
+function formatSourceContextForPrompt(sourceContext?: AutomationSourceContext | null) {
+  if (!sourceContext) return '';
+  const brief = sourceContext.brief;
+  const parts = [
+    `Source type: ${brief.source_type || 'manual'}`,
+    brief.source_title ? `Source title: ${brief.source_title}` : '',
+    brief.source_url ? `Source URL: ${brief.source_url}` : '',
+    brief.source_transcript_source ? `Transcript source: ${brief.source_transcript_source}` : '',
+    brief.source_transcript_language ? `Transcript language: ${brief.source_transcript_language}` : '',
+    sourceContext.note ? `Source note: ${sourceContext.note}` : '',
+    sourceContext.sourceNotes ? `Transcript or notes:\n${sourceContext.sourceNotes.slice(0, 12000)}` : '',
+  ].filter(Boolean);
+
+  if (parts.length === 0) return '';
+  return `\nSource context:\n${parts.join('\n')}\n`;
+}
+
+async function createHooksForAutomation(automation: AutomationWithProject, sourceContext?: AutomationSourceContext | null) {
   const brandContext = automation.project?.brand_dna ? compileBrandDNA(automation.project.brand_dna) : automation.project?.knowledge_base || '';
   const prompt = `You are a TikTok/Instagram Reels content strategist.
 
 Generate 10 unique slideshow hook ideas for the niche "${automation.niche}".
 
 Narrative style: ${automation.narrative_prompt}
-
+${formatSourceContextForPrompt(sourceContext)}
 ${brandContext ? `Brand knowledge base:\n${brandContext}\n` : ''}
 
 Each hook should be a short, attention-grabbing first-slide text that would make someone swipe to see more.
@@ -206,23 +315,13 @@ Return ONLY the JSON array.`;
   return created[0] || null;
 }
 
-async function getCollectionImages(collectionId?: string | null) {
-  if (!collectionId) return [] as string[];
-  const snap = await getDocs(query(collection(serverDb, 'collection_images'), where('collection_id', '==', collectionId)));
-  return snap.docs.map((item) => String(item.data().url || '')).filter(Boolean);
-}
-
-function getRandomImage(images: string[]) {
-  return images.length > 0 ? images[Math.floor(Math.random() * images.length)] : '';
-}
-
-function getCoverImage(slides: Slide[]) {
-  return slides.find((slide) => slide.image_url)?.image_url || '';
-}
-
-async function generateSlidesForAutomation(automation: Automation, hookText: string) {
+async function generateSlidesForAutomation(
+  automation: AutomationWithProject,
+  hookText: string,
+  sourceContext?: AutomationSourceContext | null
+) {
   const brandContext = automation.project?.brand_dna ? compileBrandDNA(automation.project.brand_dna) : automation.project?.knowledge_base || '';
-  const finalCta = automation.soft_cta || 'Salve este post e use quando for criar o próximo carrossel.';
+  const finalCta = automation.soft_cta || 'Salve este post e use quando for criar o proximo carrossel.';
 
   const prompt = `You are a senior editorial strategist and carousel writer for high-ticket experts.
 
@@ -233,7 +332,7 @@ Hook: ${hookText}
 Narrative style: ${automation.narrative_prompt}
 Format rules: ${automation.format_prompt || 'Manifesto editorial com 5 slides.'}
 Soft CTA: ${finalCta}
-
+${formatSourceContextForPrompt(sourceContext)}
 ${brandContext ? `Expert Brand DNA:\n${brandContext}\n` : ''}
 
 Rules:
@@ -242,6 +341,7 @@ Rules:
 - tagline is a tiny label, max 32 characters.
 - accent_text must be an exact word or short phrase that exists inside title.
 - Avoid generic motivational language.
+- Use the source context when available. Do not invent transcript details if the transcript is missing.
 - Include readiness_score from 0 to 100.
 
 Return ONLY valid JSON:
@@ -255,7 +355,7 @@ Return ONLY valid JSON:
     {"type":"body","tagline":"","title":"headline","body":"support text","cta":"","accent_text":"exact phrase"},
     {"type":"body","tagline":"","title":"headline","body":"support text","cta":"","accent_text":"exact phrase"},
     {"type":"body","tagline":"","title":"headline","body":"support text","cta":"","accent_text":"exact phrase"},
-    {"type":"body","tagline":"próximo passo","title":"headline","body":"support text","cta":"${finalCta}","accent_text":"exact phrase"}
+    {"type":"body","tagline":"proximo passo","title":"headline","body":"support text","cta":"${finalCta}","accent_text":"exact phrase"}
   ]
 }`;
 
@@ -266,7 +366,7 @@ Return ONLY valid JSON:
     readiness_score?: number;
     caption?: string;
     slides: Array<Partial<Slide>>;
-  }>(text, 'carrossel automático');
+  }>(text, 'carrossel automatico');
 
   const [hookImages, bodyImages] = await Promise.all([
     getCollectionImages(automation.hook_collection_id),
@@ -305,6 +405,7 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
+    const requestOrigin = getRequestOrigin(req);
     const automations = await getAutomationsWithProjects();
     const summary = {
       checked: automations.length,
@@ -348,9 +449,16 @@ export default async function handler(req: any, res: any) {
         continue;
       }
 
+      let sourceContext: AutomationSourceContext | null = null;
+      try {
+        sourceContext = await buildAutomationSourceContext(automation, requestOrigin);
+      } catch (error) {
+        console.error(`Source intake failed for automation ${automation.id}`, error);
+      }
+
       let hook = await getUnusedHook(automation.id);
       if (!hook) {
-        hook = await createHooksForAutomation(automation);
+        hook = await createHooksForAutomation(automation, sourceContext);
       }
       if (!hook) {
         summary.skipped += 1;
@@ -358,33 +466,48 @@ export default async function handler(req: any, res: any) {
         continue;
       }
 
-      const generated = await generateSlidesForAutomation(automation, hook.text);
+      const generated = await generateSlidesForAutomation(automation, hook.text, sourceContext);
       const queue = assessQueueState({
         slides: generated.slides,
         caption: generated.caption,
-        sourceTitle: automation.name,
-        sourceNotes: automation.narrative_prompt,
+        sourceTitle: sourceContext?.sourceTitle || automation.name,
+        sourceNotes: sourceContext?.sourceNotes || automation.narrative_prompt,
         readinessScore: generated.readinessScore,
       });
       const sourceCapture = await resolveSourceCapture({
+        sourceType: sourceContext?.brief.source_type,
+        sourceUrl: sourceContext?.brief.source_url,
+        sourceImageUrl: sourceContext?.thumbnailUrl,
         projectId: automation.project_id,
         automationId: automation.id,
-        fallbackImageUrl: getCoverImage(generated.slides),
+        fallbackImageUrl: sourceContext?.captureFallbackImageUrl || getCoverImage(generated.slides),
       });
 
-      const slideshowSlides = sourceCapture.sourceCaptureUrl
+      const coverSourceImage = sourceCapture.sourceCaptureUrl || sourceContext?.thumbnailUrl || '';
+      const slideshowSlides = coverSourceImage
         ? generated.slides.map((slide, index) => ({
             ...slide,
-            image_url: slide.image_url || (index === 0 ? sourceCapture.sourceCaptureUrl || '' : slide.image_url),
+            image_url: slide.image_url || (index === 0 ? coverSourceImage : slide.image_url),
           }))
         : generated.slides;
 
+      const brief = sourceContext?.brief;
       const slideshowData = {
         automation_id: automation.id,
         hook_id: hook.id,
         slides: slideshowSlides,
         caption: generated.caption,
         status: 'reviewing',
+        brief: brief ? {
+          ...brief,
+          topic: hook.text,
+          cta: automation.soft_cta || brief.cta || '',
+          source_image_url: coverSourceImage || brief.source_image_url || '',
+          source_capture_type: sourceCapture.sourceCaptureType,
+          source_capture_url: coverSourceImage,
+          source_capture_status: sourceCapture.sourceCaptureStatus,
+          source_capture_note: sourceCapture.sourceCaptureNote,
+        } : undefined,
         content_angle: generated.contentAngle,
         readiness_score: generated.readinessScore,
         generated_by: 'automation' as const,
@@ -397,9 +520,14 @@ export default async function handler(req: any, res: any) {
           hook_text: hook.text,
         },
         source_capture_type: sourceCapture.sourceCaptureType,
-        source_capture_url: sourceCapture.sourceCaptureUrl || '',
+        source_capture_url: coverSourceImage,
         source_capture_status: sourceCapture.sourceCaptureStatus,
         source_capture_note: sourceCapture.sourceCaptureNote,
+        source_transcript: brief?.source_transcript || '',
+        source_transcript_language: brief?.source_transcript_language || '',
+        source_transcript_source: brief?.source_transcript_source,
+        source_transcript_status: brief?.source_transcript_status,
+        source_transcript_note: brief?.source_transcript_note || '',
         created_at: Timestamp.now().toDate().toISOString(),
       };
 

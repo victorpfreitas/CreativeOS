@@ -8,6 +8,16 @@ export interface SourcePreview {
   text: string;
 }
 
+export interface YouTubeSourcePreview extends SourcePreview {
+  transcriptSource: 'official' | 'auto' | 'unavailable';
+  language: string;
+  note: string;
+  sourceCaptureType?: ContentBrief['source_capture_type'];
+  sourceCaptureUrl?: string;
+  sourceCaptureStatus?: ContentBrief['source_capture_status'];
+  sourceCaptureNote?: string;
+}
+
 export interface SourceImageResolution {
   sourceCaptureType?: ContentBrief['source_capture_type'];
   sourceCaptureUrl?: string;
@@ -29,6 +39,34 @@ export async function fetchRssSource(url: string): Promise<SourcePreview> {
     imageUrl: data.imageUrl || '',
     excerpt: data.excerpt || '',
     text: data.text || '',
+  };
+}
+
+export async function fetchYouTubeSource(url: string, lang?: string): Promise<YouTubeSourcePreview> {
+  const target = new URL('/api/source/youtube', window.location.origin);
+  target.searchParams.set('url', url);
+  if (lang) target.searchParams.set('lang', lang);
+
+  const response = await fetch(target.toString());
+  const data = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    throw new Error(data?.error || 'Nao consegui ler esse video agora.');
+  }
+
+  return {
+    title: data?.title || 'Video do YouTube',
+    url: data?.url || url,
+    imageUrl: data?.imageUrl || '',
+    excerpt: '',
+    text: data?.transcript || '',
+    transcriptSource: data?.transcriptSource === 'official' || data?.transcriptSource === 'auto' ? data.transcriptSource : 'unavailable',
+    language: data?.language || '',
+    note: data?.note || '',
+    sourceCaptureType: data?.sourceCaptureType,
+    sourceCaptureUrl: data?.sourceCaptureUrl || '',
+    sourceCaptureStatus: data?.sourceCaptureStatus,
+    sourceCaptureNote: data?.sourceCaptureNote || '',
   };
 }
 

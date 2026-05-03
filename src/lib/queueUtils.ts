@@ -1,5 +1,6 @@
 import type { Automation, BrandDNA, Project, Slideshow } from './types';
 import { getSlideshowSourceCapture, getSourceCaptureStatusLabel, getSourceCaptureTypeLabel } from './sourceCapture';
+import { getSlideshowTranscriptMeta, getTranscriptSourceLabel, getTranscriptStatusLabel } from './sourceTranscript';
 
 export function getBrandDnaScore(brandDna?: BrandDNA) {
   if (!brandDna) return 0;
@@ -21,9 +22,10 @@ export function getAutomationIssues(automation: Automation, project?: Project | 
   const issues: string[] = [];
 
   if (!automation.project_id) issues.push('Sem projeto conectado');
-  if (!automation.niche?.trim()) issues.push('Nicho não definido');
+  if (!automation.niche?.trim()) issues.push('Nicho nao definido');
   if (!automation.narrative_prompt?.trim()) issues.push('Narrativa principal ausente');
-  if (!automation.schedule_days?.length || !automation.schedule_time?.trim()) issues.push('Agenda não configurada');
+  if (!automation.schedule_days?.length || !automation.schedule_time?.trim()) issues.push('Agenda nao configurada');
+  if (automation.source_mode === 'youtube' && !automation.youtube_source_url?.trim()) issues.push('URL do YouTube ausente');
   if (!automation.hook_collection_id && !automation.body_collection_id) issues.push('Sem caminho visual definido');
   if (project && getBrandDnaScore(project.brand_dna) < 40) issues.push('Brand DNA ainda fraco');
 
@@ -51,21 +53,21 @@ export function assessQueueState(input: {
   if (!sourceTitle && !sourceNotes) {
     return {
       queueLabel: 'needs_source_context' as const,
-      queueNote: 'Faltou contexto de fonte suficiente para dar segurança editorial.',
+      queueNote: 'Faltou contexto de fonte suficiente para dar seguranca editorial.',
     };
   }
 
   if (coverTitle.length < 14 || (readinessScore ?? 0) < 60) {
     return {
       queueLabel: 'needs_stronger_hook' as const,
-      queueNote: 'Vale reforçar promessa, gancho ou clareza antes da revisão final.',
+      queueNote: 'Vale reforcar promessa, gancho ou clareza antes da revisao final.',
     };
   }
 
   if (!bodySupport) {
     return {
       queueLabel: 'needs_source_context' as const,
-      queueNote: 'Os slides de corpo ainda têm pouco apoio para sustentar a tese.',
+      queueNote: 'Os slides de corpo ainda tem pouco apoio para sustentar a tese.',
     };
   }
 
@@ -78,7 +80,7 @@ export function assessQueueState(input: {
 
   return {
     queueLabel: 'ready_for_review' as const,
-    queueNote: 'Draft pronto para revisão humana e ajustes finos no editor.',
+    queueNote: 'Draft pronto para revisao humana e ajustes finos no editor.',
   };
 }
 
@@ -91,13 +93,13 @@ export function getReviewStateLabel(state?: Slideshow['review_state']) {
     case 'queued':
       return 'Na fila';
     case 'reviewing':
-      return 'Em revisão';
+      return 'Em revisao';
     case 'approved':
       return 'Aprovado';
     case 'rejected':
       return 'Descartado';
     case 'needs_regeneration':
-      return 'Pedir nova versão';
+      return 'Pedir nova versao';
     default:
       return 'Sem estado';
   }
@@ -106,7 +108,7 @@ export function getReviewStateLabel(state?: Slideshow['review_state']) {
 export function getQueueLabelText(label?: Slideshow['queue_label']) {
   switch (label) {
     case 'ready_for_review':
-      return 'Pronto para revisão';
+      return 'Pronto para revisao';
     case 'needs_stronger_hook':
       return 'Gancho fraco';
     case 'needs_source_context':
@@ -126,5 +128,19 @@ export function getSourceCaptureSummary(slideshow: Slideshow) {
     note: capture.source_capture_note || 'Sem observacao visual salva para este draft.',
     isFallback: capture.source_capture_status === 'fallback_used',
     failed: capture.source_capture_status === 'failed',
+  };
+}
+
+export function getTranscriptSummary(slideshow: Slideshow) {
+  const transcript = getSlideshowTranscriptMeta(slideshow);
+  return {
+    sourceLabel: getTranscriptSourceLabel(transcript.source),
+    statusLabel: getTranscriptStatusLabel(transcript.status),
+    note: transcript.note || (transcript.source === 'unavailable'
+      ? 'A base textual deste draft veio sem transcricao automatica confirmada.'
+      : 'Sem observacao textual salva para este draft.'),
+    language: transcript.language || '',
+    missing: !transcript.transcript.trim(),
+    source: transcript.source,
   };
 }

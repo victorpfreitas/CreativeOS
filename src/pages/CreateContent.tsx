@@ -7,9 +7,10 @@ import { carouselTemplates, getCarouselTemplate } from '../lib/carouselTemplates
 import { defaultColorPaletteId, defaultFontPresetId, getCarouselColorPalette } from '../lib/carouselVisuals';
 import { expertContentPresets, getExpertContentPreset } from '../lib/contentPresets';
 import { generateContentStrategy, generateSourceCarouselStrategy } from '../services/geminiService';
-import { fetchRssSource, getYouTubeThumbnail, getYouTubeThumbnailCandidates, resolveSourceImage, type SourcePreview } from '../services/sourceService';
+import { fetchRssSource, fetchYouTubeSource, getYouTubeThumbnail, getYouTubeThumbnailCandidates, resolveSourceImage, type SourcePreview } from '../services/sourceService';
 import { assessQueueState } from '../lib/queueUtils';
 import { getSourceCaptureStatusLabel, getSourceCaptureTypeLabel, pickResolvedSourceImageUrl } from '../lib/sourceCapture';
+import { getTranscriptSourceLabel, getTranscriptStatusLabel } from '../lib/sourceTranscript';
 
 const inputCls = 'w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500';
 type SourceType = NonNullable<ContentBrief['source_type']>;
@@ -71,6 +72,11 @@ export default function CreateContent() {
     source_capture_url: '',
     source_capture_status: undefined,
     source_capture_note: '',
+    source_transcript: '',
+    source_transcript_language: '',
+    source_transcript_source: undefined,
+    source_transcript_status: undefined,
+    source_transcript_note: '',
   });
 
   useEffect(() => {
@@ -101,6 +107,11 @@ export default function CreateContent() {
   const sourceCaptureUrl = brief.source_capture_url ?? '';
   const sourceCaptureStatus = brief.source_capture_status;
   const sourceCaptureNote = brief.source_capture_note ?? '';
+  const sourceTranscript = brief.source_transcript ?? '';
+  const sourceTranscriptLanguage = brief.source_transcript_language ?? '';
+  const sourceTranscriptSource = brief.source_transcript_source;
+  const sourceTranscriptStatus = brief.source_transcript_status;
+  const sourceTranscriptNote = brief.source_transcript_note ?? '';
   const isSourceFlow = sourceType === 'youtube' || sourceType === 'rss';
   const selectedAngleSuggestions = angleSuggestions[sourceType];
   const selectedSourceTemplate = sourceNoteTemplates[sourceType];
@@ -125,11 +136,11 @@ export default function CreateContent() {
       };
     }
 
-    if (sourceType === 'youtube' && !sourceNotes.trim()) {
+    if (sourceType === 'youtube' && !sourceNotes.trim() && !sourceTranscript.trim()) {
       return {
         ready: false,
         title: 'Falta contexto do video',
-        detail: 'A URL ja esta aqui. Agora cole transcricao, resumo ou bullets principais para manter fidelidade.',
+        detail: 'A URL ja esta aqui. Se a transcricao nao vier automaticamente, complemente com resumo ou bullets principais.',
       };
     }
 
@@ -187,6 +198,11 @@ export default function CreateContent() {
           source_capture_url: '',
           source_capture_status: undefined,
           source_capture_note: '',
+          source_transcript: '',
+          source_transcript_language: '',
+          source_transcript_source: undefined,
+          source_transcript_status: undefined,
+          source_transcript_note: '',
         };
       }
       return { ...prev, [field]: value };
@@ -220,6 +236,11 @@ export default function CreateContent() {
       source_capture_url: '',
       source_capture_status: undefined,
       source_capture_note: '',
+      source_transcript: '',
+      source_transcript_language: '',
+      source_transcript_source: undefined,
+      source_transcript_status: undefined,
+      source_transcript_note: '',
     }));
     setStrategy(null);
     setSourcePreview(null);
@@ -244,6 +265,11 @@ export default function CreateContent() {
       source_capture_url: '',
       source_capture_status: undefined,
       source_capture_note: '',
+      source_transcript: '',
+      source_transcript_language: '',
+      source_transcript_source: undefined,
+      source_transcript_status: undefined,
+      source_transcript_note: '',
     }));
     setSourcePreview(null);
     setStrategy(null);
@@ -261,30 +287,52 @@ export default function CreateContent() {
     setStrategy(null);
     try {
       if (sourceType === 'youtube') {
-        const imageUrl = getYouTubeThumbnailCandidates(sourceUrl)[0] || getYouTubeThumbnail(sourceUrl);
-        const resolvedImage = await resolveSourceImage({
-          sourceType,
-          sourceUrl,
-          sourceImageUrl: imageUrl,
-          projectId: brief.project_id,
-        });
-        const preview: SourcePreview = {
-          title: sourceTitle || 'Video do YouTube',
+        const youtubeSource = await fetchYouTubeSource(sourceUrl);
+        const imageUrl = youtubeSource.imageUrl || getYouTubeThumbnailCandidates(sourceUrl)[0] || getYouTubeThumbnail(sourceUrl);
+        const resolvedImage = youtubeSource.sourceCaptureUrl
+          ? {
+              sourceCaptureType: youtubeSource.sourceCaptureType,
+              sourceCaptureUrl: youtubeSource.sourceCaptureUrl,
+              sourceCaptureStatus: youtubeSource.sourceCaptureStatus,
+              sourceCaptureNote: youtubeSource.sourceCaptureNote,
+            }
+          : await resolveSourceImage({
+              sourceType,
+              sourceUrl,
+              sourceImageUrl: imageUrl,
+              projectId: brief.project_id,
+            });
+        const transcriptText = youtubeSource.text || '';
+        const nextPreview: SourcePreview = {
+          title: youtubeSource.title || sourceTitle || 'Video do YouTube',
           url: sourceUrl,
           imageUrl: pickResolvedSourceImageUrl(resolvedImage.sourceCaptureUrl, imageUrl),
-          excerpt: sourceNotes.slice(0, 700) || '',
-          text: sourceNotes,
+          excerpt: transcriptText.slice(0, 700) || '',
+          text: transcriptText,
         };
-        setSourcePreview(preview);
+        setSourcePreview(nextPreview);
         setBrief((prev) => ({
           ...prev,
-          source_title: prev.source_title || preview.title,
+          topic: prev.topic || nextPreview.title,
+          source_title: nextPreview.title || prev.source_title || 'Video do YouTube',
           source_image_url: pickResolvedSourceImageUrl(resolvedImage.sourceCaptureUrl, imageUrl),
-          source_excerpt: preview.excerpt,
+          source_excerpt: nextPreview.excerpt,
+          source_notes: transcriptText
+            ? (prev.source_transcript?.trim() === transcriptText.trim()
+                ? prev.source_notes
+                : (prev.source_notes || '').trim()
+                    ? `${transcriptText}\n\nNotas editoriais complementares:\n${(prev.source_notes || '').replace(prev.source_transcript || '', '').trim()}`
+                    : transcriptText)
+            : prev.source_notes,
           source_capture_type: resolvedImage.sourceCaptureType,
           source_capture_url: resolvedImage.sourceCaptureUrl || '',
           source_capture_status: resolvedImage.sourceCaptureStatus,
-          source_capture_note: resolvedImage.sourceCaptureNote || '',
+          source_capture_note: resolvedImage.sourceCaptureNote || youtubeSource.note || '',
+          source_transcript: transcriptText,
+          source_transcript_language: youtubeSource.language || '',
+          source_transcript_source: youtubeSource.transcriptSource,
+          source_transcript_status: transcriptText ? 'ready' : 'failed',
+          source_transcript_note: youtubeSource.note || '',
         }));
       } else if (sourceType === 'rss') {
         const preview = await fetchRssSource(sourceUrl);
@@ -327,8 +375,8 @@ export default function CreateContent() {
       setError('Cole a URL da fonte antes de gerar.');
       return;
     }
-    if (sourceType === 'youtube' && !sourceNotes.trim()) {
-      setError('Cole a transcricao ou notas do video para gerar um carrossel fiel.');
+    if (sourceType === 'youtube' && !sourceNotes.trim() && !sourceTranscript.trim()) {
+      setError('Nao veio transcricao automatica para este video. Cole um resumo, transcricao ou bullets para gerar com fidelidade.');
       return;
     }
     if (sourceType === 'rss' && !sourceNotes.trim() && !sourceExcerpt.trim()) {
@@ -414,6 +462,11 @@ export default function CreateContent() {
         source_capture_url: brief.source_capture_url || resolvedSourceImageUrl,
         source_capture_status: brief.source_capture_status,
         source_capture_note: brief.source_capture_note,
+        source_transcript: brief.source_transcript,
+        source_transcript_language: brief.source_transcript_language,
+        source_transcript_source: brief.source_transcript_source,
+        source_transcript_status: brief.source_transcript_status,
+        source_transcript_note: brief.source_transcript_note,
         scheduled_for: null,
       });
       navigate(`/editor/${slideshow.id}`);
@@ -618,7 +671,7 @@ export default function CreateContent() {
                           <span className="h-2 w-2 rounded-full bg-emerald-300" />
                           Fonte pronta para gerar
                         </div>
-                        {(sourceCaptureType || sourceCaptureStatus) && (
+                        {(sourceCaptureType || sourceCaptureStatus || sourceTranscriptSource) && (
                           <div className="flex flex-wrap gap-2">
                             <span className="rounded-full border border-white/10 bg-black/30 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-slate-200">
                               {getSourceCaptureTypeLabel(sourceCaptureType)}
@@ -632,6 +685,22 @@ export default function CreateContent() {
                             }`}>
                               {getSourceCaptureStatusLabel(sourceCaptureStatus)}
                             </span>
+                            {sourceTranscriptSource && (
+                              <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-widest ${
+                                sourceTranscriptSource === 'official'
+                                  ? 'border-emerald-400/20 bg-emerald-500/10 text-emerald-200'
+                                  : sourceTranscriptSource === 'auto'
+                                    ? 'border-sky-400/20 bg-sky-500/10 text-sky-200'
+                                    : 'border-amber-400/20 bg-amber-500/10 text-amber-100'
+                              }`}>
+                                {getTranscriptSourceLabel(sourceTranscriptSource)}
+                              </span>
+                            )}
+                            {sourceTranscriptStatus && (
+                              <span className="rounded-full border border-white/10 bg-white/[0.03] px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-slate-300">
+                                {getTranscriptStatusLabel(sourceTranscriptStatus)}
+                              </span>
+                            )}
                           </div>
                         )}
                         <p className="text-sm font-bold text-white line-clamp-2">{sourcePreview?.title || sourceTitle || 'Fonte carregada'}</p>
@@ -639,8 +708,11 @@ export default function CreateContent() {
                         {(sourcePreview?.excerpt || sourceExcerpt) && (
                           <p className="text-sm text-slate-400 leading-relaxed line-clamp-4">{sourcePreview?.excerpt || sourceExcerpt}</p>
                         )}
-                        {sourceCaptureNote && (
-                          <p className="text-xs text-slate-500 leading-relaxed">{sourceCaptureNote}</p>
+                        {(sourceCaptureNote || sourceTranscriptNote || sourceTranscriptLanguage) && (
+                          <p className="text-xs text-slate-500 leading-relaxed">
+                            {sourceTranscriptNote || sourceCaptureNote}
+                            {sourceTranscriptLanguage ? ` Idioma: ${sourceTranscriptLanguage}.` : ''}
+                          </p>
                         )}
                       </div>
                     </div>

@@ -4,6 +4,7 @@ import { Link, useParams } from 'react-router-dom';
 import type { Automation, Hook, Slideshow } from '../lib/types';
 import * as db from '../lib/database';
 import { generateHooks, generateSlideshow } from '../services/geminiService';
+import { fetchYouTubeSource } from '../services/sourceService';
 import { assessQueueState } from '../lib/queueUtils';
 
 export default function AutomationDetail() {
@@ -42,11 +43,18 @@ export default function AutomationDetail() {
     setGeneratingHooks(true);
     try {
       const project = automation.project;
+      const youtubeSource = automation.source_mode === 'youtube' && automation.youtube_source_url?.trim()
+        ? await fetchYouTubeSource(automation.youtube_source_url, automation.youtube_transcript_language || undefined).catch(() => null)
+        : null;
       const hookTexts = await generateHooks({
         niche: automation.niche,
         narrativePrompt: automation.narrative_prompt,
         knowledgeBase: project?.knowledge_base,
         count: 10,
+        sourceType: automation.source_mode === 'youtube' ? 'youtube' : undefined,
+        sourceTitle: youtubeSource?.title,
+        sourceUrl: automation.youtube_source_url,
+        sourceNotes: youtubeSource?.text || '',
       });
       await db.createHooks(hookTexts.map((text) => ({ automation_id: automation.id, text })));
       loadData();
@@ -63,6 +71,12 @@ export default function AutomationDetail() {
     setLastCreated(null);
     try {
       const project = automation.project;
+      const youtubeSource = automation.source_mode === 'youtube' && automation.youtube_source_url?.trim()
+        ? await fetchYouTubeSource(automation.youtube_source_url, automation.youtube_transcript_language || undefined).catch(() => null)
+        : null;
+      const sourceTitle = youtubeSource?.title || automation.name;
+      const sourceNotes = youtubeSource?.text || automation.narrative_prompt;
+      const sourceImageUrl = youtubeSource?.imageUrl || '';
       const result = await generateSlideshow({
         hookText: hook.text,
         niche: automation.niche,
@@ -70,6 +84,10 @@ export default function AutomationDetail() {
         formatPrompt: automation.format_prompt,
         softCta: automation.soft_cta,
         knowledgeBase: project?.knowledge_base,
+        sourceType: automation.source_mode === 'youtube' ? 'youtube' : undefined,
+        sourceTitle,
+        sourceUrl: automation.youtube_source_url,
+        sourceNotes,
       });
 
       let hookImages: string[] = [];
@@ -94,8 +112,8 @@ export default function AutomationDetail() {
       const queue = assessQueueState({
         slides: slidesWithImages,
         caption: result.caption,
-        sourceTitle: automation.name,
-        sourceNotes: automation.narrative_prompt,
+        sourceTitle,
+        sourceNotes,
       });
 
       const slideshow = await db.createSlideshow({
@@ -107,17 +125,50 @@ export default function AutomationDetail() {
         generated_by: 'manual',
         queue_label: queue.queueLabel,
         queue_note: queue.queueNote,
+        brief: automation.source_mode === 'youtube' ? {
+          project_id: automation.project_id,
+          topic: hook.text,
+          goal: '',
+          audience: '',
+          cta: automation.soft_cta || '',
+          preset_id: '',
+          template_id: '',
+          source_type: 'youtube',
+          source_url: automation.youtube_source_url || '',
+          source_title: sourceTitle,
+          source_image_url: sourceImageUrl || coverImage,
+          source_excerpt: sourceNotes.slice(0, 700),
+          source_notes: sourceNotes,
+          source_capture_type: youtubeSource?.sourceCaptureType || (coverImage ? 'project_fallback' : undefined),
+          source_capture_url: youtubeSource?.sourceCaptureUrl || coverImage,
+          source_capture_status: youtubeSource?.sourceCaptureStatus || (coverImage ? 'fallback_used' : 'failed'),
+          source_capture_note: youtubeSource?.sourceCaptureNote || (coverImage
+            ? 'Draft criado manualmente a partir da automacao com apoio visual das colecoes do projeto.'
+            : 'O draft foi criado sem imagem disponivel nas colecoes ligadas a esta automacao.'),
+          source_transcript: youtubeSource?.text || '',
+          source_transcript_language: youtubeSource?.language || '',
+          source_transcript_source: youtubeSource?.transcriptSource,
+          source_transcript_status: youtubeSource?.text ? (youtubeSource.transcriptSource === 'auto' ? 'partial' : 'ready') : 'failed',
+          source_transcript_note: youtubeSource?.note || '',
+        } : undefined,
         source_context: {
           automation_id: automation.id,
           trigger_label: 'automation_detail',
           hook_text: hook.text,
         },
-        source_capture_type: coverImage ? 'project_fallback' : undefined,
-        source_capture_url: coverImage,
-        source_capture_status: coverImage ? 'fallback_used' : 'failed',
-        source_capture_note: coverImage
-          ? 'Draft criado manualmente a partir da automacao com apoio visual das colecoes do projeto.'
-          : 'O draft foi criado sem imagem disponivel nas colecoes ligadas a esta automacao.',
+        source_capture_type: youtubeSource?.sourceCaptureType || (coverImage ? 'project_fallback' : undefined),
+        source_capture_url: youtubeSource?.sourceCaptureUrl || sourceImageUrl || coverImage,
+        source_capture_status: youtubeSource?.sourceCaptureStatus || (coverImage ? 'fallback_used' : 'failed'),
+        source_capture_note: youtubeSource?.sourceCaptureNote || (
+          coverImage
+            ? 'Draft criado manualmente a partir da automacao com apoio visual das colecoes do projeto.'
+            : 'O draft foi criado sem imagem disponivel nas colecoes ligadas a esta automacao.'
+        ),
+        source_transcript: youtubeSource?.text || '',
+        source_transcript_language: youtubeSource?.language || '',
+        source_transcript_source: youtubeSource?.transcriptSource,
+        source_transcript_status: youtubeSource?.text ? (youtubeSource.transcriptSource === 'auto' ? 'partial' : 'ready') : 'failed',
+        source_transcript_note: youtubeSource?.note || '',
       });
 
       await db.markHookUsed(hook.id);

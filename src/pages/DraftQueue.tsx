@@ -4,7 +4,8 @@ import { Link } from 'react-router-dom';
 import * as db from '../lib/database';
 import type { Project, Slide, Slideshow } from '../lib/types';
 import { generateSlideshow } from '../services/geminiService';
-import { assessQueueState, getQueueLabelText, getReviewStateLabel, getSlideshowProjectId, getSourceCaptureSummary } from '../lib/queueUtils';
+import { fetchYouTubeSource } from '../services/sourceService';
+import { assessQueueState, getQueueLabelText, getReviewStateLabel, getSlideshowProjectId, getSourceCaptureSummary, getTranscriptSummary } from '../lib/queueUtils';
 
 type FilterState = 'all' | NonNullable<Slideshow['review_state']>;
 type FilterSource = 'all' | NonNullable<Slideshow['generated_by']>;
@@ -94,6 +95,11 @@ export default function DraftQueue() {
     try {
       const automation = slideshow.automation || await db.getAutomation(slideshow.automation_id);
       if (!automation) throw new Error('Automation not found');
+      const youtubeSource = automation.source_mode === 'youtube' && automation.youtube_source_url?.trim()
+        ? await fetchYouTubeSource(automation.youtube_source_url, automation.youtube_transcript_language || undefined).catch(() => null)
+        : null;
+      const sourceTitle = youtubeSource?.title || automation.name;
+      const sourceNotes = youtubeSource?.text || automation.narrative_prompt;
 
       const result = await generateSlideshow({
         hookText: slideshow.source_context.hook_text,
@@ -102,14 +108,18 @@ export default function DraftQueue() {
         formatPrompt: automation.format_prompt,
         softCta: automation.soft_cta,
         knowledgeBase: automation.project?.knowledge_base,
+        sourceType: automation.source_mode === 'youtube' ? 'youtube' : undefined,
+        sourceTitle,
+        sourceUrl: automation.youtube_source_url,
+        sourceNotes,
       });
       const regeneratedSlides = hydrateSlides(result.slides, slideshow.slides);
 
       const queue = assessQueueState({
         slides: regeneratedSlides,
         caption: result.caption,
-        sourceTitle: automation.name,
-        sourceNotes: automation.narrative_prompt,
+        sourceTitle,
+        sourceNotes,
       });
 
       await db.updateSlideshow(slideshow.id, {
@@ -118,6 +128,15 @@ export default function DraftQueue() {
         review_state: 'queued',
         queue_label: queue.queueLabel,
         queue_note: queue.queueNote,
+        source_transcript: youtubeSource?.text || '',
+        source_transcript_language: youtubeSource?.language || '',
+        source_transcript_source: youtubeSource?.transcriptSource,
+        source_transcript_status: youtubeSource?.text ? (youtubeSource.transcriptSource === 'auto' ? 'partial' : 'ready') : 'failed',
+        source_transcript_note: youtubeSource?.note || '',
+        source_capture_type: youtubeSource?.sourceCaptureType || slideshow.source_capture_type,
+        source_capture_url: youtubeSource?.sourceCaptureUrl || slideshow.source_capture_url || '',
+        source_capture_status: youtubeSource?.sourceCaptureStatus || slideshow.source_capture_status,
+        source_capture_note: youtubeSource?.sourceCaptureNote || slideshow.source_capture_note || '',
       });
 
       setSlideshows((prev) => prev.map((item) => (
@@ -130,6 +149,15 @@ export default function DraftQueue() {
               review_state: 'queued',
               queue_label: queue.queueLabel,
               queue_note: queue.queueNote,
+              source_transcript: youtubeSource?.text || '',
+              source_transcript_language: youtubeSource?.language || '',
+              source_transcript_source: youtubeSource?.transcriptSource,
+              source_transcript_status: youtubeSource?.text ? (youtubeSource.transcriptSource === 'auto' ? 'partial' : 'ready') : 'failed',
+              source_transcript_note: youtubeSource?.note || '',
+              source_capture_type: youtubeSource?.sourceCaptureType || item.source_capture_type,
+              source_capture_url: youtubeSource?.sourceCaptureUrl || item.source_capture_url || '',
+              source_capture_status: youtubeSource?.sourceCaptureStatus || item.source_capture_status,
+              source_capture_note: youtubeSource?.sourceCaptureNote || item.source_capture_note || '',
             }
           : item
       )));
@@ -221,6 +249,7 @@ export default function DraftQueue() {
             const queueLabel = getQueueLabelText(slideshow.queue_label);
             const reviewState = getReviewStateLabel(slideshow.review_state);
             const sourceCapture = getSourceCaptureSummary(slideshow);
+            const transcript = getTranscriptSummary(slideshow);
             const isActing = actingId === slideshow.id;
 
             return (
@@ -248,11 +277,21 @@ export default function DraftQueue() {
                       }`}>
                         {sourceCapture.typeLabel}
                       </span>
+                      <span className={`rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-widest ${
+                        transcript.source === 'official'
+                          ? 'bg-emerald-500/10 text-emerald-200'
+                          : transcript.source === 'auto'
+                            ? 'bg-sky-500/10 text-sky-200'
+                            : 'bg-amber-500/10 text-amber-100'
+                      }`}>
+                        {transcript.sourceLabel}
+                      </span>
                     </div>
                     <div>
                       <h2 className="text-xl font-bold text-white leading-tight">{promise}</h2>
                       <p className="text-sm text-slate-400 mt-2 leading-relaxed">{slideshow.queue_note || 'Sem observacao de fila.'}</p>
                       <p className="text-xs text-slate-500 mt-2">{sourceCapture.note}</p>
+                      <p className="text-xs text-slate-500 mt-1">{transcript.note}{transcript.language ? ` Idioma: ${transcript.language}.` : ''}</p>
                     </div>
                   </div>
 
@@ -261,6 +300,7 @@ export default function DraftQueue() {
                     <QueueFact label="Sistema" value={slideshow.automation?.name || 'Manual'} />
                     <QueueFact label="Readiness" value={`${slideshow.readiness_score || 0}/100`} />
                     <QueueFact label="Imagem" value={sourceCapture.statusLabel} />
+                    <QueueFact label="Transcript" value={transcript.statusLabel} />
                     <QueueFact label="Criado em" value={new Date(slideshow.created_at).toLocaleDateString('pt-BR')} />
                   </div>
                 </div>

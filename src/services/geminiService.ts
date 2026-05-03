@@ -324,8 +324,18 @@ export async function generateHooks(params: {
   narrativePrompt: string;
   knowledgeBase?: string;
   count?: number;
+  sourceType?: ContentBrief['source_type'];
+  sourceTitle?: string;
+  sourceUrl?: string;
+  sourceNotes?: string;
 }): Promise<string[]> {
-  const { niche, narrativePrompt, knowledgeBase, count = 10 } = params;
+  const { niche, narrativePrompt, knowledgeBase, count = 10, sourceType, sourceTitle, sourceUrl, sourceNotes } = params;
+  const sourceContext = compactText([
+    sourceType ? `Source type: ${sourceType}` : '',
+    sourceTitle ? `Source title: ${sourceTitle}` : '',
+    sourceUrl ? `Source URL: ${sourceUrl}` : '',
+    sourceNotes ? `Source notes/transcript:\n${sourceNotes}` : '',
+  ].filter(Boolean).join('\n\n'));
 
   const prompt = `You are a TikTok/Instagram Reels content strategist.
 
@@ -334,6 +344,7 @@ Generate ${count} unique slideshow hook ideas for the niche "${niche}".
 Narrative style: ${narrativePrompt}
 
 ${knowledgeBase ? `Brand knowledge base:\n${knowledgeBase}\n` : ''}
+${sourceContext ? `Source context:\n${sourceContext}\n` : ''}
 
 Each hook should be a short, attention-grabbing first-slide text that would make someone swipe to see more.
 Think of hooks that provoke curiosity, reveal a surprising fact, or promise a transformation.
@@ -362,11 +373,21 @@ export async function generateSlideshow(params: {
   softCta?: string;
   knowledgeBase?: string;
   slideCount?: number;
+  sourceType?: ContentBrief['source_type'];
+  sourceTitle?: string;
+  sourceUrl?: string;
+  sourceNotes?: string;
 }): Promise<{ slides: GeneratedSlide[]; caption: string }> {
   const {
     hookText, niche, narrativePrompt, formatPrompt,
-    softCta, knowledgeBase, slideCount = 5,
+    softCta, knowledgeBase, slideCount = 5, sourceType, sourceTitle, sourceUrl, sourceNotes,
   } = params;
+  const sourceContext = compactText([
+    sourceType ? `Source type: ${sourceType}` : '',
+    sourceTitle ? `Source title: ${sourceTitle}` : '',
+    sourceUrl ? `Source URL: ${sourceUrl}` : '',
+    sourceNotes ? `Source notes/transcript:\n${sourceNotes}` : '',
+  ].filter(Boolean).join('\n\n'));
 
   const prompt = `You are a TikTok/Instagram slideshow content writer.
 
@@ -378,6 +399,7 @@ Narrative style: ${narrativePrompt}
 Format rules: ${formatPrompt}
 ${softCta ? `Soft CTA for the last slide: ${softCta}` : ''}
 ${knowledgeBase ? `Brand knowledge base:\n${knowledgeBase}\n` : ''}
+${sourceContext ? `Source context:\n${sourceContext}\n` : ''}
 
 Rules:
 - Slide 1 is always the hook (already provided)

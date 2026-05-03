@@ -42,6 +42,9 @@ export interface Automation {
   schedule_time: string;
   schedule_timezone: string;
   status: 'active' | 'paused';
+  source_mode?: 'topic' | 'youtube';
+  youtube_source_url?: string;
+  youtube_transcript_language?: string;
   hook_collection_id: string | null;
   body_collection_id: string | null;
   health_status?: 'healthy' | 'missing_inputs' | 'paused' | 'needs_review_capacity';
@@ -91,6 +94,11 @@ export interface ContentBrief {
   source_capture_url?: string;
   source_capture_status?: 'ready' | 'fallback_used' | 'failed';
   source_capture_note?: string;
+  source_transcript?: string;
+  source_transcript_language?: string;
+  source_transcript_source?: 'official' | 'auto' | 'unavailable';
+  source_transcript_status?: 'ready' | 'partial' | 'failed';
+  source_transcript_note?: string;
 }
 
 export interface ContentStrategy {
@@ -137,6 +145,11 @@ export interface Slideshow {
   source_capture_url?: string;
   source_capture_status?: 'ready' | 'fallback_used' | 'failed';
   source_capture_note?: string;
+  source_transcript?: string;
+  source_transcript_language?: string;
+  source_transcript_source?: 'official' | 'auto' | 'unavailable';
+  source_transcript_status?: 'ready' | 'partial' | 'failed';
+  source_transcript_note?: string;
   exported_at?: string | null;
   created_at: string;
   // Joined fields
@@ -231,6 +244,9 @@ export interface CreateAutomationInput {
   narrative_prompt: string;
   format_prompt: string;
   soft_cta: string;
+  source_mode?: 'topic' | 'youtube';
+  youtube_source_url?: string;
+  youtube_transcript_language?: string;
   schedule_days: string[];
   schedule_time: string;
   schedule_timezone: string;

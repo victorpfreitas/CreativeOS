@@ -3,6 +3,7 @@ import { AlertTriangle, ArrowRight, BarChart3, CheckCircle2, ChevronRight, Clock
 import { Link } from 'react-router-dom';
 import * as db from '../lib/database';
 import type { Automation, Project, Slideshow } from '../lib/types';
+import { getReviewStateLabel } from '../lib/queueUtils';
 
 function getBrandDnaScore(project: Project) {
   const dna = project.brand_dna;
@@ -25,6 +26,7 @@ export default function Dashboard() {
   const [stats, setStats] = useState({ totalAutomations: 0, totalSlideshows: 0, totalHooks: 0, scheduledToday: 0 });
   const [projects, setProjects] = useState<Project[]>([]);
   const [recentAutomations, setRecentAutomations] = useState<Automation[]>([]);
+  const [allSlideshows, setAllSlideshows] = useState<Slideshow[]>([]);
   const [recentSlideshows, setRecentSlideshows] = useState<Slideshow[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -40,6 +42,7 @@ export default function Dashboard() {
         setStats(s);
         setProjects(projectData);
         setRecentAutomations(autos.slice(0, 5));
+        setAllSlideshows(shows);
         setRecentSlideshows(shows.slice(0, 5));
       } catch (err) {
         console.error('Error loading dashboard:', err);
@@ -54,6 +57,12 @@ export default function Dashboard() {
     () => projects.filter((project) => getBrandDnaScore(project) < 50),
     [projects]
   );
+  const queueItems = useMemo(
+    () => allSlideshows.filter((show) => show.review_state && show.review_state !== 'approved' && show.review_state !== 'rejected'),
+    [allSlideshows]
+  );
+  const queuedForReview = queueItems.filter((show) => show.review_state === 'queued').length;
+  const recentQueueItems = queueItems.slice(0, 3);
   const latestDraft = recentSlideshows[0];
   const latestProjectNeedingSetup = projectsMissingDna[0];
 
@@ -146,9 +155,9 @@ export default function Dashboard() {
 
   const statCards = [
     { label: 'Sistemas ativos', value: stats.totalAutomations, icon: Zap, color: 'text-indigo-500 bg-indigo-50' },
+    { label: 'Na draft queue', value: queuedForReview, icon: CheckCircle2, color: 'text-sky-500 bg-sky-50' },
     { label: 'Carrosséis criados', value: stats.totalSlideshows, icon: Film, color: 'text-emerald-500 bg-emerald-50' },
     { label: 'Hooks disponíveis', value: stats.totalHooks, icon: TrendingUp, color: 'text-amber-500 bg-amber-50' },
-    { label: 'Projetos vivos', value: projects.length, icon: FolderGit2, color: 'text-violet-500 bg-violet-50' },
   ];
 
   if (loading) {
@@ -293,11 +302,42 @@ export default function Dashboard() {
               title="Montar rotina recorrente"
               detail="Conecte um projeto e tire uma automação do papel."
             />
+            <QuickAction
+              to="/queue"
+              title="Revisar draft queue"
+              detail="Veja o que a operação já gerou e assuma a próxima revisão."
+            />
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
+        <div className="premium-card overflow-hidden">
+          <div className="p-6 border-b border-white/5 flex items-center justify-between">
+            <h2 className="text-xl font-bold text-white">Draft queue</h2>
+            <Link to="/queue" className="text-xs font-black text-sky-400 uppercase tracking-widest hover:text-sky-300">Abrir fila</Link>
+          </div>
+          {recentQueueItems.length === 0 ? <div className="p-12 text-center text-slate-600 text-sm italic">Nenhum draft aguardando revisão agora</div> : (
+            <div className="divide-y divide-white/5">
+              {recentQueueItems.map((show) => (
+                <Link key={show.id} to={`/editor/${show.id}`} className="flex items-center gap-4 p-6 hover:bg-white/[0.03] transition-colors group">
+                  <div className="w-12 h-12 rounded-2xl bg-sky-500/10 flex items-center justify-center group-hover:scale-110 transition-transform">
+                    <CheckCircle2 className="w-6 h-6 text-sky-400" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold text-white truncate text-lg group-hover:text-sky-300 transition-colors">{show.hook?.text || show.slides?.[0]?.title || show.slides?.[0]?.text || 'Draft sem título'}</p>
+                    <p className="text-xs text-slate-500 mt-1 uppercase tracking-widest font-black">
+                      {getReviewStateLabel(show.review_state)} · {show.generated_by || 'manual'}
+                    </p>
+                  </div>
+                  <ChevronRight className="w-5 h-5 text-slate-800 group-hover:text-sky-400 group-hover:translate-x-1 transition-all" />
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 xl:col-span-2">
         <div className="premium-card overflow-hidden">
           <div className="p-6 border-b border-white/5 flex items-center justify-between">
             <h2 className="text-xl font-bold text-white">Sistemas recentes</h2>
@@ -348,6 +388,7 @@ export default function Dashboard() {
             </div>
           )}
         </div>
+      </div>
       </div>
     </div>
   );

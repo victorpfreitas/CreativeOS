@@ -4,6 +4,7 @@ import { Link, useParams, useNavigate } from 'react-router-dom';
 import type { Project, ContentPlanItem, Automation } from '../lib/types';
 import * as db from '../lib/database';
 import { generateWeeklyPlan, generateSlideshow } from '../services/geminiService';
+import { assessQueueState } from '../lib/queueUtils';
 
 const DAYS: Array<{ key: ContentPlanItem['day']; label: string; short: string }> = [
   { key: 'mon', label: 'Segunda', short: 'Seg' },
@@ -134,11 +135,27 @@ export default function WeeklyPlanning() {
         ...s,
         image_url: i === 0 ? getRandom(hookImages) : getRandom(bodyImages),
       }));
+      const queue = assessQueueState({
+        slides: slidesWithImages,
+        caption: result.caption,
+        sourceTitle: item.topic,
+        sourceNotes: item.hook_suggestion,
+      });
 
       const slideshow = await db.createSlideshow({
         automation_id: automation.id,
         slides: slidesWithImages,
         caption: result.caption,
+        review_state: 'queued',
+        generated_by: 'weekly_plan',
+        queue_label: queue.queueLabel,
+        queue_note: queue.queueNote,
+        source_context: {
+          automation_id: automation.id,
+          plan_day: item.day,
+          trigger_label: 'weekly_plan',
+          hook_text: item.hook_suggestion,
+        },
       });
 
       setItems((prev) => prev.map((p) => p.day === item.day ? { ...p, slideshow_id: slideshow.id, status: 'generated' } : p));

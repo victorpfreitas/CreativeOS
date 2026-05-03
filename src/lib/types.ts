@@ -44,6 +44,9 @@ export interface Automation {
   status: 'active' | 'paused';
   hook_collection_id: string | null;
   body_collection_id: string | null;
+  health_status?: 'healthy' | 'missing_inputs' | 'paused' | 'needs_review_capacity';
+  last_generated_at?: string | null;
+  next_run_at?: string | null;
   created_at: string;
   // Joined fields
   project?: Project;
@@ -116,6 +119,16 @@ export interface Slideshow {
   color_palette_id?: string;
   accent_color?: string;
   readiness_score?: number;
+  review_state?: 'queued' | 'reviewing' | 'approved' | 'rejected' | 'needs_regeneration';
+  generated_by?: 'manual' | 'automation' | 'weekly_plan';
+  queue_label?: 'ready_for_review' | 'needs_stronger_hook' | 'needs_source_context' | 'needs_cta_cleanup';
+  queue_note?: string;
+  source_context?: {
+    automation_id?: string;
+    plan_day?: string;
+    trigger_label?: string;
+    hook_text?: string;
+  };
   exported_at?: string | null;
   created_at: string;
   // Joined fields

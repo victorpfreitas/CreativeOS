@@ -14,6 +14,53 @@ import type {
   Slide, ContentAnalysis, ContentPlan, ContentBrief,
 } from './types';
 
+type CreateSlideshowInput = {
+  automation_id?: string;
+  hook_id?: string;
+  slides: Slide[];
+  caption: string;
+  status?: string;
+  theme?: 'dark' | 'light' | 'vibrant' | 'minimal' | 'bold_gradient';
+  watermark?: string;
+  logo_url?: string;
+  brief?: ContentBrief;
+  content_angle?: string;
+  template_id?: string;
+  font_preset_id?: string;
+  color_palette_id?: string;
+  accent_color?: string;
+  readiness_score?: number;
+  review_state?: Slideshow['review_state'];
+  generated_by?: Slideshow['generated_by'];
+  queue_label?: Slideshow['queue_label'];
+  queue_note?: string;
+  source_context?: Slideshow['source_context'];
+  scheduled_for?: string | null;
+};
+
+type UpdateSlideshowInput = Partial<{
+  slides: Slide[];
+  caption: string;
+  status: string;
+  theme: 'dark' | 'light' | 'vibrant' | 'minimal' | 'bold_gradient';
+  watermark: string;
+  logo_url?: string;
+  brief: ContentBrief;
+  content_angle: string;
+  template_id: string;
+  font_preset_id: string;
+  color_palette_id: string;
+  accent_color: string;
+  readiness_score: number;
+  review_state: Slideshow['review_state'];
+  generated_by: Slideshow['generated_by'];
+  queue_label: Slideshow['queue_label'];
+  queue_note: string;
+  source_context: Slideshow['source_context'];
+  exported_at: string | null;
+  scheduled_for: string | null;
+}>;
+
 // Sort helper — avoids composite index requirement for compound queries
 function sortByCreatedAt<T extends { created_at?: string }>(arr: T[]): T[] {
   return arr.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
@@ -94,7 +141,15 @@ export async function createAutomation(input: CreateAutomationInput): Promise<Au
   return { id: ref.id, ...data } as Automation;
 }
 
-export async function updateAutomation(id: string, input: Partial<CreateAutomationInput & { status: string }>): Promise<Automation> {
+export async function updateAutomation(
+  id: string,
+  input: Partial<CreateAutomationInput & {
+    status: string;
+    health_status: NonNullable<Automation['health_status']>;
+    last_generated_at: string | null;
+    next_run_at: string | null;
+  }>
+): Promise<Automation> {
   const ref = doc(db, 'automations', id);
   await updateDoc(ref, input);
   const snap = await getDoc(ref);
@@ -146,13 +201,13 @@ export async function getSlideshows(): Promise<Slideshow[]> {
   const automationIds = [...new Set(slideshows.map((s) => s.automation_id).filter((id): id is string => !!id))];
   const hookIds = [...new Set(slideshows.map((s) => s.hook_id).filter((id): id is string => !!id))];
 
-  const [autoSnaps, hookSnaps] = await Promise.all([
-    Promise.all(automationIds.map((id) => getDoc(doc(db, 'automations', id)))),
+  const [automations, hookSnaps] = await Promise.all([
+    Promise.all(automationIds.map((id) => getAutomation(id))),
     Promise.all(hookIds.map((id) => getDoc(doc(db, 'hooks', id)))),
   ]);
 
   const autoMap = new Map<string, Automation>(
-    autoSnaps.filter((s) => s.exists()).map((s) => [s.id, docToObj<Automation>(s)])
+    automations.filter((automation): automation is Automation => !!automation).map((automation) => [automation.id, automation])
   );
   const hookMap = new Map<string, Hook>(
     hookSnaps.filter((s) => s.exists()).map((s) => [s.id, docToObj<Hook>(s)])
@@ -171,13 +226,17 @@ export async function getSlideshowsByAutomation(automationId: string): Promise<S
   const slideshows = sortByCreatedAt(snap.docs.map((d) => docToObj<Slideshow>(d)));
 
   const hookIds = [...new Set(slideshows.map((s) => s.hook_id).filter((id): id is string => !!id))];
-  const hookSnaps = await Promise.all(hookIds.map((id) => getDoc(doc(db, 'hooks', id))));
+  const [hookSnaps, automation] = await Promise.all([
+    Promise.all(hookIds.map((id) => getDoc(doc(db, 'hooks', id)))),
+    getAutomation(automationId),
+  ]);
   const hookMap = new Map<string, Hook>(
     hookSnaps.filter((s) => s.exists()).map((s) => [s.id, docToObj<Hook>(s)])
   );
 
   return slideshows.map((show) => ({
     ...show,
+    automation: automation || undefined,
     hook: show.hook_id ? hookMap.get(show.hook_id) : undefined,
   }) as Slideshow);
 }
@@ -197,46 +256,13 @@ export async function getSlideshow(id: string): Promise<Slideshow | null> {
   return show;
 }
 
-export async function createSlideshow(input: {
-  automation_id?: string;
-  hook_id?: string;
-  slides: Slide[];
-  caption: string;
-  status?: string;
-  theme?: 'dark' | 'light' | 'vibrant' | 'minimal' | 'bold_gradient';
-  watermark?: string;
-  logo_url?: string;
-  brief?: ContentBrief;
-  content_angle?: string;
-  template_id?: string;
-  font_preset_id?: string;
-  color_palette_id?: string;
-  accent_color?: string;
-  readiness_score?: number;
-  scheduled_for?: string | null;
-}): Promise<Slideshow> {
+export async function createSlideshow(input: CreateSlideshowInput): Promise<Slideshow> {
   const data = { ...input, status: input.status || 'draft', created_at: Timestamp.now().toDate().toISOString() };
   const ref = await addDoc(collection(db, 'slideshows'), data);
   return { id: ref.id, ...data } as Slideshow;
 }
 
-export async function updateSlideshow(id: string, input: Partial<{
-  slides: Slide[];
-  caption: string;
-  status: string;
-  theme: 'dark' | 'light' | 'vibrant' | 'minimal' | 'bold_gradient';
-  watermark: string;
-  logo_url?: string;
-  brief: ContentBrief;
-  content_angle: string;
-  template_id: string;
-  font_preset_id: string;
-  color_palette_id: string;
-  accent_color: string;
-  readiness_score: number;
-  exported_at: string | null;
-  scheduled_for: string | null;
-}>): Promise<Slideshow> {
+export async function updateSlideshow(id: string, input: UpdateSlideshowInput): Promise<Slideshow> {
   const ref = doc(db, 'slideshows', id);
   await updateDoc(ref, input);
   const snap = await getDoc(ref);

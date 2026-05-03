@@ -10,6 +10,7 @@ import TemplateSlide, { getSlideReadabilityWarning } from '../components/carouse
 import { toPng } from 'html-to-image';
 import JSZip from 'jszip';
 import { regenerateCarousel, regenerateSlide } from '../services/geminiService';
+import { getQueueLabelText, getReviewStateLabel } from '../lib/queueUtils';
 
 const SLIDE_W = 1080;
 const SLIDE_H = 1350;
@@ -158,6 +159,10 @@ export default function SlideshowEditor() {
     try {
       const data = await db.getSlideshow(id!);
       if (data) {
+        if (data.review_state === 'queued') {
+          void db.updateSlideshow(data.id, { review_state: 'reviewing' });
+          data.review_state = 'reviewing';
+        }
         setSlideshow(data);
         setSlides(data.slides || []);
         setCaption(data.caption || '');
@@ -386,6 +391,11 @@ export default function SlideshowEditor() {
           </Link>
           <div className="flex min-w-0 items-center gap-2">
             <span className="bg-white/5 text-slate-300 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">Peça única</span>
+            {slideshow.review_state && (
+              <span className="bg-indigo-500/10 text-indigo-200 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
+                {getReviewStateLabel(slideshow.review_state)}
+              </span>
+            )}
             <h1 className="min-w-0 truncate text-base font-bold text-white sm:text-lg">{slideshow.brief?.topic || slideshow.automation?.name || 'Carousel'}</h1>
           </div>
         </div>
@@ -545,6 +555,11 @@ export default function SlideshowEditor() {
                     ? 'Use os marcadores da faixa de thumbnails para revisar slides com texto longo, pouco apoio ou CTA fraco.'
                     : 'A estrutura geral está consistente. Agora vale lapidar copy e visual.'}
                 </p>
+                {slideshow.queue_label && (
+                  <p className="mt-3 text-xs font-bold text-indigo-200">
+                    Leitura da fila: {getQueueLabelText(slideshow.queue_label)}
+                  </p>
+                )}
               </div>
             </div>
             <div>

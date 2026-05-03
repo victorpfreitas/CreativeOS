@@ -8,6 +8,7 @@ import { defaultColorPaletteId, defaultFontPresetId, getCarouselColorPalette } f
 import { expertContentPresets, getExpertContentPreset } from '../lib/contentPresets';
 import { generateContentStrategy, generateSourceCarouselStrategy } from '../services/geminiService';
 import { fetchRssSource, getYouTubeThumbnail, type SourcePreview } from '../services/sourceService';
+import { assessQueueState } from '../lib/queueUtils';
 
 const inputCls = 'w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500';
 type SourceType = NonNullable<ContentBrief['source_type']>;
@@ -324,6 +325,13 @@ export default function CreateContent() {
     setError('');
     try {
       const defaultPalette = getCarouselColorPalette(defaultColorPaletteId);
+      const queue = assessQueueState({
+        slides: strategy.slides,
+        caption: strategy.caption,
+        sourceTitle: sourceTitle || brief.topic,
+        sourceNotes: sourceNotes,
+        readinessScore: strategy.readiness_score,
+      });
       const slideshow = await db.createSlideshow({
         slides: strategy.slides.map((slide) => ({
           ...slide,
@@ -339,6 +347,13 @@ export default function CreateContent() {
         color_palette_id: defaultColorPaletteId,
         accent_color: defaultPalette.accent,
         readiness_score: strategy.readiness_score,
+        review_state: 'reviewing',
+        generated_by: 'manual',
+        queue_label: queue.queueLabel,
+        queue_note: queue.queueNote,
+        source_context: {
+          trigger_label: 'create_content',
+        },
         scheduled_for: null,
       });
       navigate(`/editor/${slideshow.id}`);

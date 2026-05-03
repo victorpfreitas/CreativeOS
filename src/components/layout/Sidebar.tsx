@@ -1,9 +1,10 @@
 import { NavLink } from 'react-router-dom';
-import { Home, FolderGit2, Zap, Settings, Images, Film, Sparkles } from 'lucide-react';
+import { Home, FolderGit2, Inbox, Zap, Settings, Images, Film, Sparkles } from 'lucide-react';
 
 export default function Sidebar() {
   const links = [
     { to: '/', icon: Home, label: 'Dashboard' },
+    { to: '/queue', icon: Inbox, label: 'Draft Queue' },
     { to: '/create', icon: Sparkles, label: 'Criar Conteúdo' },
     { to: '/projects', icon: FolderGit2, label: 'Experts' },
     { to: '/automations', icon: Zap, label: 'Sistemas' },

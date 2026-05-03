@@ -4,6 +4,7 @@ import { Link, useParams } from 'react-router-dom';
 import type { Automation, Hook, Slideshow } from '../lib/types';
 import * as db from '../lib/database';
 import { generateHooks, generateSlideshow } from '../services/geminiService';
+import { assessQueueState } from '../lib/queueUtils';
 
 export default function AutomationDetail() {
   const { id } = useParams<{ id: string }>();
@@ -89,12 +90,27 @@ export default function AutomationDetail() {
         ...slide,
         image_url: index === 0 ? getRandom(hookImages) : getRandom(bodyImages),
       }));
+      const queue = assessQueueState({
+        slides: slidesWithImages,
+        caption: result.caption,
+        sourceTitle: automation.name,
+        sourceNotes: automation.narrative_prompt,
+      });
 
       const slideshow = await db.createSlideshow({
         automation_id: automation.id,
         hook_id: hook.id,
         slides: slidesWithImages,
         caption: result.caption,
+        review_state: 'queued',
+        generated_by: 'manual',
+        queue_label: queue.queueLabel,
+        queue_note: queue.queueNote,
+        source_context: {
+          automation_id: automation.id,
+          trigger_label: 'automation_detail',
+          hook_text: hook.text,
+        },
       });
 
       await db.markHookUsed(hook.id);

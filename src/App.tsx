@@ -11,6 +11,7 @@ const ProjectDetail = lazy(() => import('./pages/ProjectDetail'));
 const ContentAnalysis = lazy(() => import('./pages/ContentAnalysis'));
 const WeeklyPlanning = lazy(() => import('./pages/WeeklyPlanning'));
 const Automations = lazy(() => import('./pages/Automations'));
+const DraftQueue = lazy(() => import('./pages/DraftQueue'));
 const NewAutomation = lazy(() => import('./pages/NewAutomation'));
 const AutomationDetail = lazy(() => import('./pages/AutomationDetail'));
 const SlideshowEditor = lazy(() => import('./pages/SlideshowEditor'));
@@ -90,6 +91,7 @@ function App() {
                   <Route path="projects/:id/analysis" element={<ContentAnalysis />} />
                   <Route path="projects/:id/planning" element={<WeeklyPlanning />} />
                   <Route path="automations" element={<Automations />} />
+                  <Route path="queue" element={<DraftQueue />} />
                   <Route path="automations/new" element={<NewAutomation />} />
                   <Route path="automations/:id" element={<AutomationDetail />} />
                   <Route path="editor/:id" element={<SlideshowEditor />} />

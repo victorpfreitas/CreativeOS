@@ -168,7 +168,7 @@ export default function ProjectDetail() {
 
       <div className="grid grid-cols-3 gap-3">
         <Link
-          to="/create"
+          to={`/create?project=${project.id}`}
           className="flex items-center gap-3 bg-white border border-slate-200 rounded-xl p-4 hover:border-indigo-300 hover:shadow-sm transition-all group"
         >
           <div className="w-9 h-9 bg-indigo-100 rounded-lg flex items-center justify-center group-hover:bg-indigo-200 transition-colors">

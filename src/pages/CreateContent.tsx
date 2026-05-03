@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowRight, Check, FileText, Link2, Loader2, RefreshCw, Rss, Sparkles, Target, Wand2, Youtube } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import type { ContentBrief, ContentStrategy, Project } from '../lib/types';
 import * as db from '../lib/database';
 import { carouselTemplates, getCarouselTemplate } from '../lib/carouselTemplates';
@@ -38,6 +38,8 @@ const sourceNoteTemplates = {
 
 export default function CreateContent() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const preselectedProjectId = searchParams.get('project') || '';
   const [projects, setProjects] = useState<Project[]>([]);
   const [loadingProjects, setLoadingProjects] = useState(true);
   const [generating, setGenerating] = useState(false);
@@ -74,6 +76,11 @@ export default function CreateContent() {
       })
       .finally(() => setLoadingProjects(false));
   }, []);
+
+  useEffect(() => {
+    if (!preselectedProjectId || loadingProjects) return;
+    setBrief((prev) => prev.project_id ? prev : { ...prev, project_id: preselectedProjectId });
+  }, [loadingProjects, preselectedProjectId]);
 
   const selectedProject = projects.find((project) => project.id === brief.project_id);
   const selectedPreset = useMemo(() => getExpertContentPreset(brief.preset_id), [brief.preset_id]);

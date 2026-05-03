@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Save, Loader2, Image as ImageIcon, Download, Copy, Check, Plus, Trash2, RefreshCw, ChevronLeft, ChevronRight, Type, Palette } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Check, CheckCircle2, Copy, Download, Image as ImageIcon, Loader2, Palette, Plus, RefreshCw, Save, Trash2, ChevronLeft, ChevronRight, Type } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
 import type { Slideshow, Slide, ImageCollection } from '../lib/types';
 import { carouselTemplates, getCarouselTemplate } from '../lib/carouselTemplates';
@@ -95,6 +95,27 @@ function getEditableValue(slide: Slide, field: SlideTextField, slideIndex: numbe
   if (field === 'cta') return slide.cta ?? '';
   if (field === 'body') return slide.body ?? '';
   return '';
+}
+
+function getSlideSignals(slide: Slide, slideIndex: number, totalSlides: number) {
+  const signals: string[] = [];
+  const readabilityWarning = getSlideReadabilityWarning(slide, slideIndex, totalSlides);
+  const title = (slide.title ?? slide.text ?? '').trim();
+  const body = (slide.body ?? '').trim();
+  const cta = (slide.cta ?? '').trim();
+
+  if (readabilityWarning) signals.push('Texto longo');
+  if (slideIndex > 0 && slideIndex < totalSlides - 1 && title.length > 28 && body.length < 18) {
+    signals.push('Pouco apoio');
+  }
+  if (slideIndex === totalSlides - 1 && cta.length < 10) {
+    signals.push('CTA fraco');
+  }
+  if (slideIndex === 0 && title.length < 12) {
+    signals.push('Gancho curto');
+  }
+
+  return signals;
 }
 
 export default function SlideshowEditor() {
@@ -346,6 +367,15 @@ export default function SlideshowEditor() {
   const selectedPalette = getCarouselColorPalette(colorPaletteId);
   const currentWarning = getSlideReadabilityWarning(slide, currentSlide, slides.length);
   const isCTA = currentSlide === slides.length - 1 && currentSlide !== 0;
+  const sourceTypeLabel = slideshow.brief?.source_type === 'youtube'
+    ? 'YouTube'
+    : slideshow.brief?.source_type === 'rss'
+      ? 'RSS / Portal'
+      : 'Ideia manual';
+  const inferredPromise = slideshow.slides?.[0]?.title || slideshow.slides?.[0]?.text || slideshow.brief?.topic || slideshow.automation?.name || 'Carrossel em revisão';
+  const slideSignals = slides.map((item, index) => getSlideSignals(item, index, slides.length));
+  const currentSignals = slideSignals[currentSlide] || [];
+  const slidesNeedingAttention = slideSignals.filter((signals) => signals.length > 0).length;
 
   return (
     <div className="h-full min-h-0 flex flex-col gap-4 overflow-hidden">
@@ -452,6 +482,16 @@ export default function SlideshowEditor() {
                   <div className={`absolute top-1.5 left-1.5 w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-bold ${currentSlide === i ? 'bg-indigo-500 text-white' : 'bg-black/60 text-slate-300'}`}>
                     {i + 1}
                   </div>
+                  {slideSignals[i]?.length > 0 && (
+                    <div className="absolute top-1.5 right-1.5 rounded-md bg-amber-500/90 px-1.5 py-1 text-[9px] font-black uppercase tracking-widest text-slate-950">
+                      {slideSignals[i].length}
+                    </div>
+                  )}
+                  {slideSignals[i]?.length > 0 && (
+                    <div className="absolute inset-x-1 bottom-8 rounded-md bg-black/65 px-1.5 py-1 text-[9px] font-bold text-amber-100 opacity-0 transition-opacity group-hover:opacity-100">
+                      {slideSignals[i][0]}
+                    </div>
+                  )}
                   <div className="absolute inset-x-1 bottom-1 flex justify-center gap-1 rounded-md bg-black/55 px-1 py-1 opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100 z-10">
                     {i > 0 && (
                       <button onClick={(e) => { e.stopPropagation(); moveSlide(i, 'left'); }} className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-indigo-600 text-white shadow-lg transition-colors hover:bg-indigo-700" title="Mover para esquerda">
@@ -477,6 +517,36 @@ export default function SlideshowEditor() {
 
         <aside className="w-full min-h-0 flex flex-col gap-4 overflow-y-auto pr-2 custom-scrollbar">
           <div className="bg-white/5 border border-white/10 rounded-2xl p-5 space-y-6">
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-4 space-y-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Handoff</p>
+                  <h4 className="text-lg font-bold text-white">Resumo antes da edição</h4>
+                </div>
+                <span className="rounded-full bg-emerald-500/10 px-2.5 py-1 text-[11px] font-black text-emerald-200">
+                  {slideshow.readiness_score || 0}/100
+                </span>
+              </div>
+              <div className="space-y-3">
+                <EditorReviewRow label="Promessa" value={inferredPromise} />
+                <EditorReviewRow label="Ângulo" value={slideshow.content_angle || 'Ainda sem ângulo salvo'} />
+                <EditorReviewRow label="Fonte" value={`${sourceTypeLabel}${slideshow.brief?.source_title ? ` · ${slideshow.brief.source_title}` : ''}`} />
+                <EditorReviewRow label="Preset + template" value={`${slideshow.brief?.preset_id || 'preset-base'} · ${selectedTemplate.name}`} />
+              </div>
+              <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs font-black uppercase tracking-widest text-slate-500">Pontos de atenção</p>
+                  <span className={`text-xs font-black ${slidesNeedingAttention > 0 ? 'text-amber-200' : 'text-emerald-200'}`}>
+                    {slidesNeedingAttention > 0 ? `${slidesNeedingAttention} slide(s)` : 'Tudo limpo'}
+                  </span>
+                </div>
+                <p className="mt-2 text-sm text-slate-400 leading-relaxed">
+                  {slidesNeedingAttention > 0
+                    ? 'Use os marcadores da faixa de thumbnails para revisar slides com texto longo, pouco apoio ou CTA fraco.'
+                    : 'A estrutura geral está consistente. Agora vale lapidar copy e visual.'}
+                </p>
+              </div>
+            </div>
             <div>
               <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Direção de arte</h4>
               <div className="grid grid-cols-1 gap-2">
@@ -498,7 +568,7 @@ export default function SlideshowEditor() {
             <div className="space-y-4 pt-4 border-t border-white/5">
               <div className="flex items-center gap-2">
                 <Type className="w-4 h-4 text-indigo-300" />
-                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Fontes</h4>
+                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Tipografia</h4>
               </div>
               <div className="grid grid-cols-1 gap-2">
                 {carouselFontPresets.map((preset) => (
@@ -517,7 +587,7 @@ export default function SlideshowEditor() {
             <div className="space-y-4 pt-4 border-t border-white/5">
               <div className="flex items-center gap-2">
                 <Palette className="w-4 h-4 text-indigo-300" />
-                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Paleta</h4>
+                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Paleta e destaque</h4>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 {carouselColorPalettes.map((palette) => (
@@ -549,10 +619,25 @@ export default function SlideshowEditor() {
             </div>
 
             <div className="space-y-4 pt-4 border-t border-white/5">
-              <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Texto do slide</h4>
+              <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Narrativa do slide</h4>
               {currentWarning && (
                 <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-[11px] font-bold leading-snug text-amber-100">
                   {currentWarning}
+                </div>
+              )}
+              {currentSignals.length > 0 && (
+                <div className="rounded-xl border border-amber-500/20 bg-black/20 p-3">
+                  <div className="flex items-center gap-2 text-amber-200">
+                    <AlertTriangle className="w-4 h-4" />
+                    <p className="text-[11px] font-black uppercase tracking-widest">Este slide pede revisão</p>
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {currentSignals.map((signal) => (
+                      <span key={signal} className="rounded-full bg-amber-500/10 px-2.5 py-1 text-[11px] font-bold text-amber-100">
+                        {signal}
+                      </span>
+                    ))}
+                  </div>
                 </div>
               )}
               <div className="space-y-3">
@@ -596,7 +681,7 @@ export default function SlideshowEditor() {
             </div>
 
             <div className="pt-4 border-t border-white/5 space-y-3">
-              <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Legenda</h4>
+              <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Legenda e publicação</h4>
               <div className="relative">
                 <textarea value={caption} onChange={(e) => setCaption(e.target.value)} rows={6} className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-xs text-slate-300 focus:ring-1 focus:ring-indigo-500 resize-none" placeholder="Escreva sua legenda..." />
                 <button onClick={handleCopyCaption} className="absolute bottom-2 right-2 p-1.5 bg-indigo-500/20 text-indigo-400 rounded-md hover:bg-indigo-500/30 transition-all" title="Copiar Legenda">
@@ -606,6 +691,10 @@ export default function SlideshowEditor() {
             </div>
 
             <div className="pt-4 border-t border-white/5">
+              <div className="mb-3 flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-indigo-300" />
+                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Reescrita assistida</h4>
+              </div>
               <button onClick={handleRegenSlide} disabled={regenSlide || regenAll} className="w-full bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all">
                 {regenSlide ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
                 Regenerar Texto com IA
@@ -671,6 +760,15 @@ export default function SlideshowEditor() {
           )}
         </div>
       </Modal>
+    </div>
+  );
+}
+
+function EditorReviewRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">{label}</p>
+      <p className="mt-1 text-sm text-slate-300 leading-relaxed">{value}</p>
     </div>
   );
 }

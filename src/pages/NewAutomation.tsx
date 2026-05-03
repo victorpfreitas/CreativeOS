@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
 import { ArrowLeft, Save, Sparkles, Image as ImageIcon, Calendar, Loader2 } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import type { Project, ImageCollection } from '../lib/types';
 import * as db from '../lib/database';
 import { generateHooks } from '../services/geminiService';
 
 export default function NewAutomation() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const preselectedProjectId = searchParams.get('project') || '';
   const [projects, setProjects] = useState<Project[]>([]);
   const [collections, setCollections] = useState<ImageCollection[]>([]);
   const [saving, setSaving] = useState(false);
@@ -27,6 +29,11 @@ export default function NewAutomation() {
     db.getProjects().then(setProjects).catch(console.error);
     db.getCollections().then(setCollections).catch(console.error);
   }, []);
+
+  useEffect(() => {
+    if (!preselectedProjectId) return;
+    setProjectId((current) => current || preselectedProjectId);
+  }, [preselectedProjectId]);
 
   const dayOptions = [
     { value: 'mon', label: 'Mon' }, { value: 'tue', label: 'Tue' },

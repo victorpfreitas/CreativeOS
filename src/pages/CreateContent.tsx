@@ -7,7 +7,7 @@ import { carouselTemplates, getCarouselTemplate } from '../lib/carouselTemplates
 import { defaultColorPaletteId, defaultFontPresetId, getCarouselColorPalette } from '../lib/carouselVisuals';
 import { expertContentPresets, getExpertContentPreset } from '../lib/contentPresets';
 import { generateContentStrategy, generateSourceCarouselStrategy } from '../services/geminiService';
-import { fetchRssSource, getYouTubeThumbnail, resolveSourceImage, type SourcePreview } from '../services/sourceService';
+import { fetchRssSource, getYouTubeThumbnail, getYouTubeThumbnailCandidates, resolveSourceImage, type SourcePreview } from '../services/sourceService';
 import { assessQueueState } from '../lib/queueUtils';
 import { getSourceCaptureStatusLabel, getSourceCaptureTypeLabel, pickResolvedSourceImageUrl } from '../lib/sourceCapture';
 
@@ -261,7 +261,7 @@ export default function CreateContent() {
     setStrategy(null);
     try {
       if (sourceType === 'youtube') {
-        const imageUrl = getYouTubeThumbnail(sourceUrl);
+        const imageUrl = getYouTubeThumbnailCandidates(sourceUrl)[0] || getYouTubeThumbnail(sourceUrl);
         const resolvedImage = await resolveSourceImage({
           sourceType,
           sourceUrl,

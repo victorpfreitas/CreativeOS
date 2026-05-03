@@ -58,6 +58,18 @@ function getYouTubeThumbnail(url: string) {
   return id ? `https://img.youtube.com/vi/${id}/maxresdefault.jpg` : '';
 }
 
+function getYouTubeThumbnailCandidates(url: string) {
+  const id = getYouTubeVideoId(url);
+  if (!id) return [] as string[];
+  return [
+    `https://img.youtube.com/vi/${id}/maxresdefault.jpg`,
+    `https://img.youtube.com/vi/${id}/sddefault.jpg`,
+    `https://img.youtube.com/vi/${id}/hqdefault.jpg`,
+    `https://img.youtube.com/vi/${id}/mqdefault.jpg`,
+    `https://img.youtube.com/vi/${id}/default.jpg`,
+  ];
+}
+
 function buildScreenshotUrl(url: string) {
   return url ? `https://image.thum.io/get/width/1400/crop/980/noanimate/${url}` : '';
 }
@@ -131,14 +143,20 @@ export async function resolveSourceCapture(input: ResolveSourceCaptureInput): Pr
   const sourceImageUrl = normalizeUrl(input.sourceImageUrl);
 
   if (sourceType === 'youtube') {
-    const thumbnailUrl = sourceImageUrl || getYouTubeThumbnail(sourceUrl);
-    if (thumbnailUrl && await probeImageUrl(thumbnailUrl)) {
-      return {
-        sourceCaptureType: 'youtube_thumbnail',
-        sourceCaptureUrl: thumbnailUrl,
-        sourceCaptureStatus: 'ready',
-        sourceCaptureNote: 'Usando thumbnail oficial do YouTube para abrir o draft.',
-      };
+    const thumbnailCandidates = [
+      ...(sourceImageUrl ? [sourceImageUrl] : []),
+      ...getYouTubeThumbnailCandidates(sourceUrl),
+    ].filter((value, index, arr) => value && arr.indexOf(value) === index);
+
+    for (const thumbnailUrl of thumbnailCandidates) {
+      if (await probeImageUrl(thumbnailUrl)) {
+        return {
+          sourceCaptureType: 'youtube_thumbnail',
+          sourceCaptureUrl: thumbnailUrl,
+          sourceCaptureStatus: 'ready',
+          sourceCaptureNote: 'Usando thumbnail oficial do YouTube para abrir o draft.',
+        };
+      }
     }
   }
 
@@ -163,7 +181,14 @@ export async function resolveSourceCapture(input: ResolveSourceCaptureInput): Pr
     }
   }
 
-  const projectFallback = normalizeUrl(input.fallbackImageUrl) || await getProjectFallbackImage(input.projectId, input.automationId);
+  let projectFallback = normalizeUrl(input.fallbackImageUrl);
+  if (!projectFallback) {
+    try {
+      projectFallback = await getProjectFallbackImage(input.projectId, input.automationId);
+    } catch {
+      projectFallback = '';
+    }
+  }
   if (projectFallback && await probeImageUrl(projectFallback)) {
     return {
       sourceCaptureType: 'project_fallback',
@@ -175,6 +200,8 @@ export async function resolveSourceCapture(input: ResolveSourceCaptureInput): Pr
 
   return {
     sourceCaptureStatus: 'failed',
-    sourceCaptureNote: 'Nao conseguimos resolver uma imagem confiavel para este draft automaticamente.',
+    sourceCaptureNote: sourceType === 'youtube'
+      ? 'Nao encontramos uma thumbnail confiavel para este video agora.'
+      : 'Nao conseguimos resolver uma imagem confiavel para este draft automaticamente.',
   };
 }

@@ -57,6 +57,18 @@ export function getYouTubeThumbnail(url: string): string {
   return id ? `https://img.youtube.com/vi/${id}/maxresdefault.jpg` : '';
 }
 
+export function getYouTubeThumbnailCandidates(url: string): string[] {
+  const id = getYouTubeVideoId(url);
+  if (!id) return [];
+  return [
+    `https://img.youtube.com/vi/${id}/maxresdefault.jpg`,
+    `https://img.youtube.com/vi/${id}/sddefault.jpg`,
+    `https://img.youtube.com/vi/${id}/hqdefault.jpg`,
+    `https://img.youtube.com/vi/${id}/mqdefault.jpg`,
+    `https://img.youtube.com/vi/${id}/default.jpg`,
+  ];
+}
+
 export async function resolveSourceImage(input: {
   sourceType?: ContentBrief['source_type'];
   sourceUrl?: string;

@@ -51,6 +51,7 @@ export default function CreateContent() {
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const [showRefinement, setShowRefinement] = useState(false);
   const [error, setError] = useState('');
+  const [sourceError, setSourceError] = useState('');
   const [strategy, setStrategy] = useState<ContentStrategy | null>(null);
   const [sourcePreview, setSourcePreview] = useState<SourcePreview | null>(null);
 
@@ -209,6 +210,7 @@ export default function CreateContent() {
     });
     setStrategy(null);
     if (field === 'source_type' || field === 'source_url') setSourcePreview(null);
+    if (field === 'source_type' || field === 'source_url' || field === 'source_notes') setSourceError('');
   }
 
   function choosePreset(id: string) {
@@ -244,6 +246,7 @@ export default function CreateContent() {
     }));
     setStrategy(null);
     setSourcePreview(null);
+    setSourceError('');
   }
 
   function applySourceNotesTemplate() {
@@ -274,16 +277,18 @@ export default function CreateContent() {
     setSourcePreview(null);
     setStrategy(null);
     setError('');
+    setSourceError('');
   }
 
   async function handleLoadSource() {
     if (!sourceUrl.trim()) {
-      setError('Cole uma URL antes de buscar a fonte.');
+      setSourceError('Cole uma URL antes de confirmar a fonte.');
       return;
     }
 
     setLoadingSource(true);
     setError('');
+    setSourceError('');
     setStrategy(null);
     try {
       if (sourceType === 'youtube') {
@@ -360,7 +365,7 @@ export default function CreateContent() {
         setSourcePreview({ ...preview, imageUrl: resolvedImageUrl });
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Nao consegui carregar essa fonte.');
+      setSourceError(err instanceof Error ? err.message : 'Nao consegui carregar essa fonte.');
     } finally {
       setLoadingSource(false);
     }
@@ -644,6 +649,12 @@ export default function CreateContent() {
                       </button>
                     </div>
                   </div>
+
+                  {sourceError && (
+                    <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                      {sourceError}
+                    </div>
+                  )}
 
                   {sourceType === 'youtube' && (
                     <div className="space-y-2">

@@ -17,9 +17,15 @@ function normalizeOrigin(origin: string) {
 
 export function getRequestOrigin(req: { headers?: Record<string, string | string[] | undefined> }) {
   const protoHeader = req.headers?.['x-forwarded-proto'];
+  const forwardedHostHeader = req.headers?.['x-forwarded-host'];
   const hostHeader = req.headers?.host;
   const proto = Array.isArray(protoHeader) ? protoHeader[0] : protoHeader;
+  const forwardedHost = Array.isArray(forwardedHostHeader) ? forwardedHostHeader[0] : forwardedHostHeader;
   const host = Array.isArray(hostHeader) ? hostHeader[0] : hostHeader;
+
+  if (forwardedHost) {
+    return `${proto || 'https'}://${forwardedHost}`;
+  }
 
   if (host) {
     return `${proto || 'https'}://${host}`;
@@ -45,6 +51,9 @@ export async function fetchYouTubeTranscriptSource(origin: string, url: string, 
       signal: controller.signal,
       headers: {
         Accept: 'application/json',
+        ...(process.env.VERCEL_AUTOMATION_BYPASS_SECRET
+          ? { 'x-vercel-protection-bypass': process.env.VERCEL_AUTOMATION_BYPASS_SECRET }
+          : {}),
       },
     });
 

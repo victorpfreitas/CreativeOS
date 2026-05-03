@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import * as db from '../lib/database';
 import type { Project, Slide, Slideshow } from '../lib/types';
 import { generateSlideshow } from '../services/geminiService';
-import { assessQueueState, getQueueLabelText, getReviewStateLabel, getSlideshowProjectId } from '../lib/queueUtils';
+import { assessQueueState, getQueueLabelText, getReviewStateLabel, getSlideshowProjectId, getSourceCaptureSummary } from '../lib/queueUtils';
 
 type FilterState = 'all' | NonNullable<Slideshow['review_state']>;
 type FilterSource = 'all' | NonNullable<Slideshow['generated_by']>;
@@ -159,14 +159,14 @@ export default function DraftQueue() {
         </div>
         <div>
           <h1 className="text-3xl font-bold text-white">Draft queue por projeto</h1>
-          <p className="text-slate-500 mt-1">Tudo o que foi gerado automaticamente ou entrou em revisão fica centralizado aqui com próxima ação clara.</p>
+          <p className="text-slate-500 mt-1">Tudo o que foi gerado automaticamente ou entrou em revisao fica centralizado aqui com proxima acao clara.</p>
         </div>
       </header>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-        <QueueMetric label="Na fila" value={queuedCount} detail="Gerado e esperando revisão humana." />
-        <QueueMetric label="Em revisão" value={reviewingCount} detail="Já aberto ou assumido por alguém." />
-        <QueueMetric label="Aprovados" value={approvedCount} detail="Prontos para export, publicação ou entrega." />
+        <QueueMetric label="Na fila" value={queuedCount} detail="Gerado e esperando revisao humana." />
+        <QueueMetric label="Em revisao" value={reviewingCount} detail="Ja aberto ou assumido por alguem." />
+        <QueueMetric label="Aprovados" value={approvedCount} detail="Prontos para export, publicacao ou entrega." />
       </div>
 
       <div className="premium-card p-5 grid grid-cols-1 gap-4 md:grid-cols-4">
@@ -184,9 +184,9 @@ export default function DraftQueue() {
           <select value={stateFilter} onChange={(event) => setStateFilter(event.target.value as FilterState)} className="premium-input w-full appearance-none">
             <option value="all">Todos</option>
             <option value="queued">Na fila</option>
-            <option value="reviewing">Em revisão</option>
+            <option value="reviewing">Em revisao</option>
             <option value="approved">Aprovado</option>
-            <option value="needs_regeneration">Pedir nova versão</option>
+            <option value="needs_regeneration">Pedir nova versao</option>
             <option value="rejected">Descartado</option>
           </select>
         </div>
@@ -194,7 +194,7 @@ export default function DraftQueue() {
           <label className="premium-label">Origem</label>
           <select value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value as FilterSource)} className="premium-input w-full appearance-none">
             <option value="all">Todas</option>
-            <option value="automation">Automação</option>
+            <option value="automation">Automacao</option>
             <option value="weekly_plan">Planning semanal</option>
             <option value="manual">Manual</option>
           </select>
@@ -210,8 +210,8 @@ export default function DraftQueue() {
 
       {filteredSlideshows.length === 0 ? (
         <div className="premium-card p-12 text-center">
-          <p className="text-lg font-bold text-white">Nenhum draft nesta visão</p>
-          <p className="text-slate-500 mt-2">A fila ganha vida quando as automações geram novos carrosséis ou quando você cria drafts manuais.</p>
+          <p className="text-lg font-bold text-white">Nenhum draft nesta visao</p>
+          <p className="text-slate-500 mt-2">A fila ganha vida quando as automacoes geram novos carrosseis ou quando voce cria drafts manuais.</p>
         </div>
       ) : (
         <div className="space-y-4">
@@ -220,6 +220,7 @@ export default function DraftQueue() {
             const promise = slideshow.hook?.text || slideshow.slides?.[0]?.title || slideshow.slides?.[0]?.text || 'Draft sem promessa definida';
             const queueLabel = getQueueLabelText(slideshow.queue_label);
             const reviewState = getReviewStateLabel(slideshow.review_state);
+            const sourceCapture = getSourceCaptureSummary(slideshow);
             const isActing = actingId === slideshow.id;
 
             return (
@@ -235,13 +236,23 @@ export default function DraftQueue() {
                       </span>
                       {slideshow.generated_by && (
                         <span className="rounded-full bg-white/[0.04] px-3 py-1 text-[11px] font-black uppercase tracking-widest text-slate-400">
-                          {slideshow.generated_by === 'automation' ? 'Automação' : slideshow.generated_by === 'weekly_plan' ? 'Planning' : 'Manual'}
+                          {slideshow.generated_by === 'automation' ? 'Automacao' : slideshow.generated_by === 'weekly_plan' ? 'Planning' : 'Manual'}
                         </span>
                       )}
+                      <span className={`rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-widest ${
+                        sourceCapture.failed
+                          ? 'bg-red-500/10 text-red-200'
+                          : sourceCapture.isFallback
+                            ? 'bg-amber-500/10 text-amber-100'
+                            : 'bg-emerald-500/10 text-emerald-200'
+                      }`}>
+                        {sourceCapture.typeLabel}
+                      </span>
                     </div>
                     <div>
                       <h2 className="text-xl font-bold text-white leading-tight">{promise}</h2>
-                      <p className="text-sm text-slate-400 mt-2 leading-relaxed">{slideshow.queue_note || 'Sem observação de fila.'}</p>
+                      <p className="text-sm text-slate-400 mt-2 leading-relaxed">{slideshow.queue_note || 'Sem observacao de fila.'}</p>
+                      <p className="text-xs text-slate-500 mt-2">{sourceCapture.note}</p>
                     </div>
                   </div>
 
@@ -249,6 +260,7 @@ export default function DraftQueue() {
                     <QueueFact label="Projeto" value={project?.name || 'Sem projeto'} />
                     <QueueFact label="Sistema" value={slideshow.automation?.name || 'Manual'} />
                     <QueueFact label="Readiness" value={`${slideshow.readiness_score || 0}/100`} />
+                    <QueueFact label="Imagem" value={sourceCapture.statusLabel} />
                     <QueueFact label="Criado em" value={new Date(slideshow.created_at).toLocaleDateString('pt-BR')} />
                   </div>
                 </div>
@@ -259,7 +271,7 @@ export default function DraftQueue() {
                     disabled={isActing}
                     className="premium-button-secondary text-sm"
                   >
-                    {isActing ? 'Atualizando...' : 'Assumir revisão'}
+                    {isActing ? 'Atualizando...' : 'Assumir revisao'}
                   </button>
                   <button
                     onClick={() => updateReviewState(slideshow.id, 'approved')}
@@ -275,7 +287,7 @@ export default function DraftQueue() {
                     className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-2 text-sm font-bold text-amber-100 hover:bg-amber-500/20 transition-colors flex items-center gap-2"
                   >
                     {isActing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-                    Nova versão
+                    Nova versao
                   </button>
                   <Link to={`/editor/${slideshow.id}`} className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2 text-sm font-bold text-white hover:bg-white/[0.06] transition-colors flex items-center gap-2">
                     Abrir editor <ArrowRight className="w-4 h-4" />

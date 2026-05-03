@@ -7,8 +7,9 @@ import { carouselTemplates, getCarouselTemplate } from '../lib/carouselTemplates
 import { defaultColorPaletteId, defaultFontPresetId, getCarouselColorPalette } from '../lib/carouselVisuals';
 import { expertContentPresets, getExpertContentPreset } from '../lib/contentPresets';
 import { generateContentStrategy, generateSourceCarouselStrategy } from '../services/geminiService';
-import { fetchRssSource, getYouTubeThumbnail, type SourcePreview } from '../services/sourceService';
+import { fetchRssSource, getYouTubeThumbnail, resolveSourceImage, type SourcePreview } from '../services/sourceService';
 import { assessQueueState } from '../lib/queueUtils';
+import { getSourceCaptureStatusLabel, getSourceCaptureTypeLabel, pickResolvedSourceImageUrl } from '../lib/sourceCapture';
 
 const inputCls = 'w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500';
 type SourceType = NonNullable<ContentBrief['source_type']>;
@@ -66,6 +67,10 @@ export default function CreateContent() {
     source_title: '',
     source_image_url: '',
     source_excerpt: '',
+    source_capture_type: undefined,
+    source_capture_url: '',
+    source_capture_status: undefined,
+    source_capture_note: '',
   });
 
   useEffect(() => {
@@ -92,11 +97,16 @@ export default function CreateContent() {
   const sourceExcerpt = brief.source_excerpt ?? '';
   const sourceTitle = brief.source_title ?? '';
   const sourceImageUrl = brief.source_image_url ?? '';
+  const sourceCaptureType = brief.source_capture_type;
+  const sourceCaptureUrl = brief.source_capture_url ?? '';
+  const sourceCaptureStatus = brief.source_capture_status;
+  const sourceCaptureNote = brief.source_capture_note ?? '';
   const isSourceFlow = sourceType === 'youtube' || sourceType === 'rss';
   const selectedAngleSuggestions = angleSuggestions[sourceType];
   const selectedSourceTemplate = sourceNoteTemplates[sourceType];
   const angleReady = brief.topic.trim().length > 0;
   const hasRefinement = brief.audience.trim().length > 0 || brief.cta.trim().length > 0 || brief.goal.trim().length > 0;
+  const resolvedSourceImageUrl = pickResolvedSourceImageUrl(sourceCaptureUrl, sourceImageUrl);
 
   const sourceStatus = useMemo(() => {
     if (sourceType === 'manual') {
@@ -165,7 +175,22 @@ export default function CreateContent() {
   const readinessPercent = Math.round((readinessCompleted / readinessItems.length) * 100);
 
   function updateBrief<K extends keyof ContentBrief>(field: K, value: ContentBrief[K]) {
-    setBrief((prev) => ({ ...prev, [field]: value }));
+    setBrief((prev) => {
+      if (field === 'source_url') {
+        return {
+          ...prev,
+          [field]: value,
+          source_title: sourceType === 'youtube' ? prev.source_title : '',
+          source_image_url: '',
+          source_excerpt: '',
+          source_capture_type: undefined,
+          source_capture_url: '',
+          source_capture_status: undefined,
+          source_capture_note: '',
+        };
+      }
+      return { ...prev, [field]: value };
+    });
     setStrategy(null);
     if (field === 'source_type' || field === 'source_url') setSourcePreview(null);
   }
@@ -188,9 +213,13 @@ export default function CreateContent() {
       template_id: sourceType === 'manual' ? prev.template_id : 'paper-manifesto-image',
       source_url: sourceType === 'manual' ? '' : prev.source_url,
       source_title: sourceType === 'manual' ? '' : prev.source_title,
-      source_image_url: sourceType === 'manual' ? '' : prev.source_image_url,
+      source_image_url: '',
       source_excerpt: sourceType === 'manual' ? '' : prev.source_excerpt,
       source_notes: sourceType === 'manual' ? '' : prev.source_notes,
+      source_capture_type: undefined,
+      source_capture_url: '',
+      source_capture_status: undefined,
+      source_capture_note: '',
     }));
     setStrategy(null);
     setSourcePreview(null);
@@ -211,6 +240,10 @@ export default function CreateContent() {
       source_image_url: '',
       source_excerpt: '',
       source_notes: '',
+      source_capture_type: undefined,
+      source_capture_url: '',
+      source_capture_status: undefined,
+      source_capture_note: '',
     }));
     setSourcePreview(null);
     setStrategy(null);
@@ -229,10 +262,16 @@ export default function CreateContent() {
     try {
       if (sourceType === 'youtube') {
         const imageUrl = getYouTubeThumbnail(sourceUrl);
+        const resolvedImage = await resolveSourceImage({
+          sourceType,
+          sourceUrl,
+          sourceImageUrl: imageUrl,
+          projectId: brief.project_id,
+        });
         const preview: SourcePreview = {
           title: sourceTitle || 'Video do YouTube',
           url: sourceUrl,
-          imageUrl,
+          imageUrl: pickResolvedSourceImageUrl(resolvedImage.sourceCaptureUrl, imageUrl),
           excerpt: sourceNotes.slice(0, 700) || '',
           text: sourceNotes,
         };
@@ -240,21 +279,37 @@ export default function CreateContent() {
         setBrief((prev) => ({
           ...prev,
           source_title: prev.source_title || preview.title,
-          source_image_url: imageUrl,
+          source_image_url: pickResolvedSourceImageUrl(resolvedImage.sourceCaptureUrl, imageUrl),
           source_excerpt: preview.excerpt,
+          source_capture_type: resolvedImage.sourceCaptureType,
+          source_capture_url: resolvedImage.sourceCaptureUrl || '',
+          source_capture_status: resolvedImage.sourceCaptureStatus,
+          source_capture_note: resolvedImage.sourceCaptureNote || '',
         }));
       } else if (sourceType === 'rss') {
         const preview = await fetchRssSource(sourceUrl);
+        const resolvedImage = await resolveSourceImage({
+          sourceType,
+          sourceUrl: preview.url || sourceUrl,
+          sourceImageUrl: preview.imageUrl,
+          projectId: brief.project_id,
+        });
+        const resolvedImageUrl = pickResolvedSourceImageUrl(resolvedImage.sourceCaptureUrl, preview.imageUrl);
         setSourcePreview(preview);
         setBrief((prev) => ({
           ...prev,
           topic: prev.topic || preview.title,
           source_title: preview.title,
           source_url: preview.url || prev.source_url,
-          source_image_url: preview.imageUrl,
+          source_image_url: resolvedImageUrl,
           source_excerpt: preview.excerpt,
           source_notes: prev.source_notes || preview.text,
+          source_capture_type: resolvedImage.sourceCaptureType,
+          source_capture_url: resolvedImage.sourceCaptureUrl || '',
+          source_capture_status: resolvedImage.sourceCaptureStatus,
+          source_capture_note: resolvedImage.sourceCaptureNote || '',
         }));
+        setSourcePreview({ ...preview, imageUrl: resolvedImageUrl });
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Nao consegui carregar essa fonte.');
@@ -284,10 +339,11 @@ export default function CreateContent() {
     const preparedBrief: ContentBrief = {
       ...brief,
       source_image_url: sourceType === 'youtube'
-        ? sourceImageUrl || getYouTubeThumbnail(sourceUrl)
-        : sourceImageUrl,
+        ? resolvedSourceImageUrl || getYouTubeThumbnail(sourceUrl)
+        : resolvedSourceImageUrl,
       source_title: sourceTitle || (sourceType === 'youtube' ? 'Video do YouTube' : sourceTitle),
       source_excerpt: sourceExcerpt || sourceNotes.slice(0, 700) || '',
+      source_capture_url: sourceCaptureUrl || resolvedSourceImageUrl,
     };
     if (
       preparedBrief.source_image_url !== brief.source_image_url ||
@@ -335,7 +391,7 @@ export default function CreateContent() {
       const slideshow = await db.createSlideshow({
         slides: strategy.slides.map((slide) => ({
           ...slide,
-          image_url: slide.image_url || brief.source_image_url || '',
+          image_url: slide.image_url || resolvedSourceImageUrl || '',
         })),
         caption: strategy.caption,
         theme: selectedTemplate.theme,
@@ -354,6 +410,10 @@ export default function CreateContent() {
         source_context: {
           trigger_label: 'create_content',
         },
+        source_capture_type: brief.source_capture_type,
+        source_capture_url: brief.source_capture_url || resolvedSourceImageUrl,
+        source_capture_status: brief.source_capture_status,
+        source_capture_note: brief.source_capture_note,
         scheduled_for: null,
       });
       navigate(`/editor/${slideshow.id}`);
@@ -544,11 +604,11 @@ export default function CreateContent() {
                     </div>
                   )}
 
-                  {(sourcePreview || sourceImageUrl || sourceTitle) && (
-                    <div className={`grid grid-cols-1 gap-4 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3 ${(sourcePreview?.imageUrl || sourceImageUrl) ? 'md:grid-cols-[120px_1fr]' : ''}`}>
-                      {(sourcePreview?.imageUrl || sourceImageUrl) && (
+                  {(sourcePreview || resolvedSourceImageUrl || sourceTitle || sourceCaptureNote) && (
+                    <div className={`grid grid-cols-1 gap-4 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3 ${resolvedSourceImageUrl ? 'md:grid-cols-[120px_1fr]' : ''}`}>
+                      {resolvedSourceImageUrl && (
                         <img
-                          src={sourcePreview?.imageUrl || sourceImageUrl}
+                          src={resolvedSourceImageUrl}
                           alt=""
                           className="h-32 w-full md:h-full rounded-lg object-cover grayscale"
                         />
@@ -558,10 +618,29 @@ export default function CreateContent() {
                           <span className="h-2 w-2 rounded-full bg-emerald-300" />
                           Fonte pronta para gerar
                         </div>
+                        {(sourceCaptureType || sourceCaptureStatus) && (
+                          <div className="flex flex-wrap gap-2">
+                            <span className="rounded-full border border-white/10 bg-black/30 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-slate-200">
+                              {getSourceCaptureTypeLabel(sourceCaptureType)}
+                            </span>
+                            <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-widest ${
+                              sourceCaptureStatus === 'failed'
+                                ? 'border-red-400/20 bg-red-500/10 text-red-200'
+                                : sourceCaptureStatus === 'fallback_used'
+                                  ? 'border-amber-400/20 bg-amber-500/10 text-amber-100'
+                                  : 'border-emerald-400/20 bg-emerald-500/10 text-emerald-200'
+                            }`}>
+                              {getSourceCaptureStatusLabel(sourceCaptureStatus)}
+                            </span>
+                          </div>
+                        )}
                         <p className="text-sm font-bold text-white line-clamp-2">{sourcePreview?.title || sourceTitle || 'Fonte carregada'}</p>
                         <p className="text-xs text-slate-500 truncate">{sourcePreview?.url || sourceUrl}</p>
                         {(sourcePreview?.excerpt || sourceExcerpt) && (
                           <p className="text-sm text-slate-400 leading-relaxed line-clamp-4">{sourcePreview?.excerpt || sourceExcerpt}</p>
+                        )}
+                        {sourceCaptureNote && (
+                          <p className="text-xs text-slate-500 leading-relaxed">{sourceCaptureNote}</p>
                         )}
                       </div>
                     </div>

@@ -135,6 +135,7 @@ export default function WeeklyPlanning() {
         ...s,
         image_url: i === 0 ? getRandom(hookImages) : getRandom(bodyImages),
       }));
+      const coverImage = slidesWithImages.find((slide) => slide.image_url)?.image_url || '';
       const queue = assessQueueState({
         slides: slidesWithImages,
         caption: result.caption,
@@ -156,6 +157,12 @@ export default function WeeklyPlanning() {
           trigger_label: 'weekly_plan',
           hook_text: item.hook_suggestion,
         },
+        source_capture_type: coverImage ? 'project_fallback' : undefined,
+        source_capture_url: coverImage,
+        source_capture_status: coverImage ? 'fallback_used' : 'failed',
+        source_capture_note: coverImage
+          ? 'Draft criado a partir do planning com apoio visual das colecoes do projeto.'
+          : 'O draft entrou sem imagem visual disponivel nas colecoes do projeto.',
       });
 
       setItems((prev) => prev.map((p) => p.day === item.day ? { ...p, slideshow_id: slideshow.id, status: 'generated' } : p));

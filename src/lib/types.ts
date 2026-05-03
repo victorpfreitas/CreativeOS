@@ -87,6 +87,10 @@ export interface ContentBrief {
   source_title?: string;
   source_image_url?: string;
   source_excerpt?: string;
+  source_capture_type?: 'source_image' | 'page_screenshot' | 'youtube_thumbnail' | 'project_fallback';
+  source_capture_url?: string;
+  source_capture_status?: 'ready' | 'fallback_used' | 'failed';
+  source_capture_note?: string;
 }
 
 export interface ContentStrategy {
@@ -129,6 +133,10 @@ export interface Slideshow {
     trigger_label?: string;
     hook_text?: string;
   };
+  source_capture_type?: 'source_image' | 'page_screenshot' | 'youtube_thumbnail' | 'project_fallback';
+  source_capture_url?: string;
+  source_capture_status?: 'ready' | 'fallback_used' | 'failed';
+  source_capture_note?: string;
   exported_at?: string | null;
   created_at: string;
   // Joined fields

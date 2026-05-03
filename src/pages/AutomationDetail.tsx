@@ -90,6 +90,7 @@ export default function AutomationDetail() {
         ...slide,
         image_url: index === 0 ? getRandom(hookImages) : getRandom(bodyImages),
       }));
+      const coverImage = slidesWithImages.find((slide) => slide.image_url)?.image_url || '';
       const queue = assessQueueState({
         slides: slidesWithImages,
         caption: result.caption,
@@ -111,6 +112,12 @@ export default function AutomationDetail() {
           trigger_label: 'automation_detail',
           hook_text: hook.text,
         },
+        source_capture_type: coverImage ? 'project_fallback' : undefined,
+        source_capture_url: coverImage,
+        source_capture_status: coverImage ? 'fallback_used' : 'failed',
+        source_capture_note: coverImage
+          ? 'Draft criado manualmente a partir da automacao com apoio visual das colecoes do projeto.'
+          : 'O draft foi criado sem imagem disponivel nas colecoes ligadas a esta automacao.',
       });
 
       await db.markHookUsed(hook.id);

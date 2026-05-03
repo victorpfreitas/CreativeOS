@@ -1,9 +1,18 @@
+import type { ContentBrief } from '../lib/types';
+
 export interface SourcePreview {
   title: string;
   url: string;
   imageUrl: string;
   excerpt: string;
   text: string;
+}
+
+export interface SourceImageResolution {
+  sourceCaptureType?: ContentBrief['source_capture_type'];
+  sourceCaptureUrl?: string;
+  sourceCaptureStatus?: ContentBrief['source_capture_status'];
+  sourceCaptureNote?: string;
 }
 
 export async function fetchRssSource(url: string): Promise<SourcePreview> {
@@ -46,4 +55,35 @@ export function getYouTubeVideoId(url: string): string {
 export function getYouTubeThumbnail(url: string): string {
   const id = getYouTubeVideoId(url);
   return id ? `https://img.youtube.com/vi/${id}/maxresdefault.jpg` : '';
+}
+
+export async function resolveSourceImage(input: {
+  sourceType?: ContentBrief['source_type'];
+  sourceUrl?: string;
+  sourceImageUrl?: string;
+  projectId?: string;
+  automationId?: string;
+  fallbackImageUrl?: string;
+}): Promise<SourceImageResolution> {
+  const params = new URLSearchParams();
+  if (input.sourceType) params.set('sourceType', input.sourceType);
+  if (input.sourceUrl) params.set('sourceUrl', input.sourceUrl);
+  if (input.sourceImageUrl) params.set('sourceImageUrl', input.sourceImageUrl);
+  if (input.projectId) params.set('projectId', input.projectId);
+  if (input.automationId) params.set('automationId', input.automationId);
+  if (input.fallbackImageUrl) params.set('fallbackImageUrl', input.fallbackImageUrl);
+
+  const response = await fetch(`/api/source/resolve-image?${params.toString()}`);
+  const data = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    throw new Error(data?.error || 'Nao consegui resolver a imagem da fonte.');
+  }
+
+  return {
+    sourceCaptureType: data?.sourceCaptureType,
+    sourceCaptureUrl: data?.sourceCaptureUrl,
+    sourceCaptureStatus: data?.sourceCaptureStatus,
+    sourceCaptureNote: data?.sourceCaptureNote,
+  };
 }

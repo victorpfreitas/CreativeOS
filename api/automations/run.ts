@@ -13,6 +13,7 @@ import { serverDb } from '../_lib/firebase-server';
 import { generateAiText } from '../_lib/ai-provider';
 import type { Automation, BrandDNA, Hook, Project, Slide, Slideshow } from '../../src/lib/types';
 import { assessQueueState, getAutomationHealthStatus, getAutomationIssues } from '../../src/lib/queueUtils';
+import { resolveSourceCapture } from '../_lib/source-capture';
 
 function compactText(value?: string) {
   return (value || '')
@@ -215,6 +216,10 @@ function getRandomImage(images: string[]) {
   return images.length > 0 ? images[Math.floor(Math.random() * images.length)] : '';
 }
 
+function getCoverImage(slides: Slide[]) {
+  return slides.find((slide) => slide.image_url)?.image_url || '';
+}
+
 async function generateSlidesForAutomation(automation: Automation, hookText: string) {
   const brandContext = automation.project?.brand_dna ? compileBrandDNA(automation.project.brand_dna) : automation.project?.knowledge_base || '';
   const finalCta = automation.soft_cta || 'Salve este post e use quando for criar o próximo carrossel.';
@@ -361,11 +366,23 @@ export default async function handler(req: any, res: any) {
         sourceNotes: automation.narrative_prompt,
         readinessScore: generated.readinessScore,
       });
+      const sourceCapture = await resolveSourceCapture({
+        projectId: automation.project_id,
+        automationId: automation.id,
+        fallbackImageUrl: getCoverImage(generated.slides),
+      });
+
+      const slideshowSlides = sourceCapture.sourceCaptureUrl
+        ? generated.slides.map((slide, index) => ({
+            ...slide,
+            image_url: slide.image_url || (index === 0 ? sourceCapture.sourceCaptureUrl || '' : slide.image_url),
+          }))
+        : generated.slides;
 
       const slideshowData = {
         automation_id: automation.id,
         hook_id: hook.id,
-        slides: generated.slides,
+        slides: slideshowSlides,
         caption: generated.caption,
         status: 'reviewing',
         content_angle: generated.contentAngle,
@@ -379,6 +396,10 @@ export default async function handler(req: any, res: any) {
           trigger_label: window.windowKey,
           hook_text: hook.text,
         },
+        source_capture_type: sourceCapture.sourceCaptureType,
+        source_capture_url: sourceCapture.sourceCaptureUrl || '',
+        source_capture_status: sourceCapture.sourceCaptureStatus,
+        source_capture_note: sourceCapture.sourceCaptureNote,
         created_at: Timestamp.now().toDate().toISOString(),
       };
 

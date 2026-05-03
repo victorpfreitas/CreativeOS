@@ -11,6 +11,7 @@ import { toPng } from 'html-to-image';
 import JSZip from 'jszip';
 import { regenerateCarousel, regenerateSlide } from '../services/geminiService';
 import { getQueueLabelText, getReviewStateLabel } from '../lib/queueUtils';
+import { getSourceCaptureStatusLabel, getSourceCaptureTypeLabel, getSlideshowSourceCapture } from '../lib/sourceCapture';
 
 const SLIDE_W = 1080;
 const SLIDE_H = 1350;
@@ -381,6 +382,9 @@ export default function SlideshowEditor() {
   const slideSignals = slides.map((item, index) => getSlideSignals(item, index, slides.length));
   const currentSignals = slideSignals[currentSlide] || [];
   const slidesNeedingAttention = slideSignals.filter((signals) => signals.length > 0).length;
+  const sourceCapture = getSlideshowSourceCapture(slideshow);
+  const sourceCaptureLabel = getSourceCaptureTypeLabel(sourceCapture.source_capture_type);
+  const sourceCaptureStatusLabel = getSourceCaptureStatusLabel(sourceCapture.source_capture_status);
 
   return (
     <div className="h-full min-h-0 flex flex-col gap-4 overflow-hidden">
@@ -538,6 +542,7 @@ export default function SlideshowEditor() {
                 </span>
               </div>
               <div className="space-y-3">
+                <EditorReviewRow label="Imagem base" value={`${sourceCaptureLabel} - ${sourceCaptureStatusLabel}`} />
                 <EditorReviewRow label="Promessa" value={inferredPromise} />
                 <EditorReviewRow label="Ângulo" value={slideshow.content_angle || 'Ainda sem ângulo salvo'} />
                 <EditorReviewRow label="Fonte" value={`${sourceTypeLabel}${slideshow.brief?.source_title ? ` · ${slideshow.brief.source_title}` : ''}`} />
@@ -558,6 +563,11 @@ export default function SlideshowEditor() {
                 {slideshow.queue_label && (
                   <p className="mt-3 text-xs font-bold text-indigo-200">
                     Leitura da fila: {getQueueLabelText(slideshow.queue_label)}
+                  </p>
+                )}
+                {sourceCapture.source_capture_note && (
+                  <p className="mt-2 text-xs text-slate-500">
+                    {sourceCapture.source_capture_note}
                   </p>
                 )}
               </div>

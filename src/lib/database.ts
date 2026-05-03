@@ -35,6 +35,10 @@ type CreateSlideshowInput = {
   queue_label?: Slideshow['queue_label'];
   queue_note?: string;
   source_context?: Slideshow['source_context'];
+  source_capture_type?: Slideshow['source_capture_type'];
+  source_capture_url?: string;
+  source_capture_status?: Slideshow['source_capture_status'];
+  source_capture_note?: string;
   scheduled_for?: string | null;
 };
 
@@ -57,6 +61,10 @@ type UpdateSlideshowInput = Partial<{
   queue_label: Slideshow['queue_label'];
   queue_note: string;
   source_context: Slideshow['source_context'];
+  source_capture_type: Slideshow['source_capture_type'];
+  source_capture_url: string;
+  source_capture_status: Slideshow['source_capture_status'];
+  source_capture_note: string;
   exported_at: string | null;
   scheduled_for: string | null;
 }>;

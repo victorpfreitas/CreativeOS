@@ -1,4 +1,5 @@
 import type { Automation, BrandDNA, Project, Slideshow } from './types';
+import { getSlideshowSourceCapture, getSourceCaptureStatusLabel, getSourceCaptureTypeLabel } from './sourceCapture';
 
 export function getBrandDnaScore(brandDna?: BrandDNA) {
   if (!brandDna) return 0;
@@ -115,4 +116,15 @@ export function getQueueLabelText(label?: Slideshow['queue_label']) {
     default:
       return 'Sem leitura';
   }
+}
+
+export function getSourceCaptureSummary(slideshow: Slideshow) {
+  const capture = getSlideshowSourceCapture(slideshow);
+  return {
+    typeLabel: getSourceCaptureTypeLabel(capture.source_capture_type),
+    statusLabel: getSourceCaptureStatusLabel(capture.source_capture_status),
+    note: capture.source_capture_note || 'Sem observacao visual salva para este draft.',
+    isFallback: capture.source_capture_status === 'fallback_used',
+    failed: capture.source_capture_status === 'failed',
+  };
 }

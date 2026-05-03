@@ -11,6 +11,30 @@ import { fetchRssSource, getYouTubeThumbnail, type SourcePreview } from '../serv
 
 const inputCls = 'w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500';
 
+const angleSuggestions = {
+  manual: [
+    'O erro silencioso que trava experts bons',
+    'O que parece organizacao, mas mata a demanda',
+    'Por que conteudo bonito nao vira venda',
+  ],
+  youtube: [
+    'A leitura mais util desse video para quem vende servico premium',
+    'O ponto que quase todo mundo perde nessa aula',
+    'Como transformar esse conteudo em decisao pratica',
+  ],
+  rss: [
+    'O que essa noticia muda na pratica para o mercado',
+    'A tese por tras desse movimento',
+    'Como usar esse gancho sem soar oportunista',
+  ],
+} satisfies Record<ContentBrief['source_type'], string[]>;
+
+const sourceNoteTemplates = {
+  manual: 'Contexto rapido:\n- \n\nPonto principal:\n- \n\nExemplo ou bastidor:\n- ',
+  youtube: 'Resumo do video:\n- \n\nPontos mais fortes:\n- \n- \n\nFrase ou argumento que merece virar carrossel:\n- ',
+  rss: 'Resumo da materia:\n- \n\nDado, movimento ou noticia principal:\n- \n\nLeitura editorial que queremos fazer:\n- ',
+} satisfies Record<ContentBrief['source_type'], string>;
+
 export default function CreateContent() {
   const navigate = useNavigate();
   const [projects, setProjects] = useState<Project[]>([]);
@@ -18,6 +42,8 @@ export default function CreateContent() {
   const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loadingSource, setLoadingSource] = useState(false);
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false);
+  const [showRefinement, setShowRefinement] = useState(false);
   const [error, setError] = useState('');
   const [strategy, setStrategy] = useState<ContentStrategy | null>(null);
   const [sourcePreview, setSourcePreview] = useState<SourcePreview | null>(null);
@@ -43,7 +69,7 @@ export default function CreateContent() {
       .then(setProjects)
       .catch((err) => {
         console.error(err);
-        setError('Não consegui carregar seus projetos. Tente recarregar a página.');
+        setError('Nao consegui carregar seus projetos. Tente recarregar a pagina.');
       })
       .finally(() => setLoadingProjects(false));
   }, []);
@@ -51,6 +77,77 @@ export default function CreateContent() {
   const selectedProject = projects.find((project) => project.id === brief.project_id);
   const selectedPreset = useMemo(() => getExpertContentPreset(brief.preset_id), [brief.preset_id]);
   const selectedTemplate = useMemo(() => getCarouselTemplate(brief.template_id), [brief.template_id]);
+  const isSourceFlow = brief.source_type === 'youtube' || brief.source_type === 'rss';
+  const selectedAngleSuggestions = angleSuggestions[brief.source_type];
+  const selectedSourceTemplate = sourceNoteTemplates[brief.source_type];
+  const angleReady = brief.topic.trim().length > 0;
+  const hasRefinement = brief.audience.trim().length > 0 || brief.cta.trim().length > 0 || brief.goal.trim().length > 0;
+
+  const sourceStatus = useMemo(() => {
+    if (brief.source_type === 'manual') {
+      return {
+        ready: brief.topic.trim().length > 0 || brief.source_notes.trim().length > 0,
+        title: 'Ideia em montagem',
+        detail: brief.topic.trim() ? 'A ideia principal ja foi definida.' : 'Descreva a ideia central ou cole bastidores para a IA sair do generico.',
+      };
+    }
+
+    if (!brief.source_url.trim()) {
+      return {
+        ready: false,
+        title: 'URL pendente',
+        detail: 'Cole a URL da fonte para iniciar o draft a partir de uma base clara.',
+      };
+    }
+
+    if (brief.source_type === 'youtube' && !brief.source_notes.trim()) {
+      return {
+        ready: false,
+        title: 'Falta contexto do video',
+        detail: 'A URL ja esta aqui. Agora cole transcricao, resumo ou bullets principais para manter fidelidade.',
+      };
+    }
+
+    if (brief.source_type === 'rss' && !brief.source_excerpt.trim() && !brief.source_notes.trim()) {
+      return {
+        ready: false,
+        title: 'Fonte nao confirmada',
+        detail: 'Busque a fonte para puxar titulo, resumo e imagem antes de gerar.',
+      };
+    }
+
+    return {
+      ready: true,
+      title: 'Fonte pronta',
+      detail: 'A base ja foi entendida. Agora ajuste o angulo e gere o draft.',
+    };
+  }, [brief.source_excerpt, brief.source_notes, brief.source_type, brief.source_url, brief.topic]);
+
+  const canGenerate = sourceStatus.ready && angleReady;
+  const generateHint = !sourceStatus.ready
+    ? sourceStatus.detail
+    : !angleReady
+      ? 'Defina o angulo desejado para a IA transformar a fonte em tese e narrativa.'
+      : 'Tudo certo para gerar o draft estrategico.';
+  const readinessItems = [
+    {
+      label: 'Fonte',
+      done: sourceStatus.ready,
+      detail: sourceStatus.detail,
+    },
+    {
+      label: 'Angulo',
+      done: angleReady,
+      detail: angleReady ? 'A leitura editorial do draft ja foi definida.' : 'Falta dizer qual recorte ou tese queremos tirar dessa base.',
+    },
+    {
+      label: 'Refino',
+      done: brief.audience.trim().length > 0 || brief.cta.trim().length > 0 || brief.goal.trim().length > 0,
+      detail: 'Objetivo, publico e CTA refinam o draft, mas nao precisam travar a geracao.',
+    },
+  ];
+  const readinessCompleted = readinessItems.filter((item) => item.done).length;
+  const readinessPercent = Math.round((readinessCompleted / readinessItems.length) * 100);
 
   function updateBrief<K extends keyof ContentBrief>(field: K, value: ContentBrief[K]) {
     setBrief((prev) => ({ ...prev, [field]: value }));
@@ -82,6 +179,27 @@ export default function CreateContent() {
     }));
     setStrategy(null);
     setSourcePreview(null);
+  }
+
+  function applySourceNotesTemplate() {
+    if (brief.source_notes.trim()) return;
+    updateBrief('source_notes', selectedSourceTemplate);
+    setShowRefinement(true);
+  }
+
+  function resetSourceFlow() {
+    setBrief((prev) => ({
+      ...prev,
+      topic: '',
+      source_url: '',
+      source_title: '',
+      source_image_url: '',
+      source_excerpt: '',
+      source_notes: '',
+    }));
+    setSourcePreview(null);
+    setStrategy(null);
+    setError('');
   }
 
   async function handleLoadSource() {
@@ -131,7 +249,6 @@ export default function CreateContent() {
   }
 
   async function handleGenerate() {
-    const isSourceFlow = brief.source_type === 'youtube' || brief.source_type === 'rss';
     if (!isSourceFlow && !brief.topic.trim()) {
       setError('Descreva a ideia central do carrossel antes de gerar.');
       return;
@@ -157,7 +274,11 @@ export default function CreateContent() {
       source_title: brief.source_title || (brief.source_type === 'youtube' ? 'Video do YouTube' : brief.source_title),
       source_excerpt: brief.source_excerpt || brief.source_notes?.slice(0, 700) || '',
     };
-    if (preparedBrief.source_image_url !== brief.source_image_url || preparedBrief.source_excerpt !== brief.source_excerpt || preparedBrief.source_title !== brief.source_title) {
+    if (
+      preparedBrief.source_image_url !== brief.source_image_url ||
+      preparedBrief.source_excerpt !== brief.source_excerpt ||
+      preparedBrief.source_title !== brief.source_title
+    ) {
       setBrief(preparedBrief);
     }
 
@@ -177,7 +298,7 @@ export default function CreateContent() {
           });
       setStrategy(result);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Não consegui gerar a estratégia agora. Tente novamente.');
+      setError(err instanceof Error ? err.message : 'Nao consegui gerar a estrategia agora. Tente novamente.');
     } finally {
       setGenerating(false);
     }
@@ -209,7 +330,7 @@ export default function CreateContent() {
       navigate(`/editor/${slideshow.id}`);
     } catch (err) {
       console.error(err);
-      setError('Não consegui salvar o carrossel. Tente novamente.');
+      setError('Nao consegui salvar o carrossel. Tente novamente.');
     } finally {
       setSaving(false);
     }
@@ -219,11 +340,11 @@ export default function CreateContent() {
     <div className="space-y-8 py-4">
       <header className="flex flex-col gap-3 max-w-3xl">
         <div className="inline-flex items-center gap-2 text-[11px] font-black uppercase tracking-widest text-indigo-300">
-          <Sparkles className="w-4 h-4" /> Sistema de conteúdo para experts
+          <Sparkles className="w-4 h-4" /> Sistema de conteudo para experts
         </div>
         <h1 className="text-4xl font-bold text-white tracking-tight">Criar carrossel pronto para publicar</h1>
         <p className="text-slate-400 text-lg leading-relaxed">
-          Transforme uma ideia, tese ou bastidor em estratégia, roteiro e visual premium antes de abrir o editor.
+          Transforme uma ideia, tese ou bastidor em estrategia, roteiro e visual premium antes de abrir o editor.
         </p>
       </header>
 
@@ -235,8 +356,40 @@ export default function CreateContent() {
                 <Target className="w-5 h-5 text-indigo-300" />
               </div>
               <div>
-                <h2 className="font-bold text-white text-xl">Brief estratégico</h2>
-                <p className="text-sm text-slate-500">Poucos campos, mas suficientes para a IA sair do genérico.</p>
+                <h2 className="font-bold text-white text-xl">Brief estrategico</h2>
+                <p className="text-sm text-slate-500">Primeiro clareza de fonte e angulo. O resto entra para refinar.</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+              <StepCard
+                step="1"
+                title="Escolha a fonte"
+                description="Comece pela origem do conteudo. Manual, YouTube ou portal."
+                active
+              />
+              <StepCard
+                step="2"
+                title="Defina o angulo"
+                description="Mostre qual leitura, tese ou recorte queremos tirar dessa base."
+                active={!!brief.topic.trim()}
+              />
+              <StepCard
+                step="3"
+                title="Gere o draft"
+                description="Revise promessa, CTA e so depois abra o editor."
+                active={canGenerate || !!strategy}
+              />
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+              <p className="premium-label">Resumo rapido</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <SummaryChip label={selectedProject?.name || 'Sem projeto'} tone={selectedProject ? 'filled' : 'muted'} />
+                <SummaryChip label={selectedPreset.label} />
+                <SummaryChip label={brief.source_type === 'manual' ? 'Ideia manual' : brief.source_type === 'youtube' ? 'Fonte: YouTube' : 'Fonte: RSS / Portal'} />
+                <SummaryChip label={angleReady ? 'Angulo definido' : 'Falta angulo'} tone={angleReady ? 'filled' : 'muted'} />
+                <SummaryChip label={selectedTemplate.name} />
               </div>
             </div>
 
@@ -257,7 +410,7 @@ export default function CreateContent() {
               </div>
 
               <div className="space-y-2">
-                <label className="premium-label">Tipo de conteúdo</label>
+                <label className="premium-label">Tipo de conteudo</label>
                 <select
                   value={brief.preset_id}
                   onChange={(e) => choosePreset(e.target.value)}
@@ -270,8 +423,21 @@ export default function CreateContent() {
               </div>
             </div>
 
-            <div className="space-y-3">
-              <label className="premium-label">Fonte do carrossel</label>
+            <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4 space-y-4">
+              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <p className="premium-label">Etapa 1</p>
+                  <h3 className="text-lg font-bold text-white">Escolha a fonte do carrossel</h3>
+                  <p className="text-sm text-slate-500 mt-1">
+                    A melhor geracao comeca quando a origem do conteudo fica clara logo no inicio.
+                  </p>
+                </div>
+                <div className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-bold ${sourceStatus.ready ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200' : 'border-amber-400/20 bg-amber-500/10 text-amber-100'}`}>
+                  <span className={`h-2 w-2 rounded-full ${sourceStatus.ready ? 'bg-emerald-300' : 'bg-amber-300'}`} />
+                  {sourceStatus.title}
+                </div>
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 {[
                   { id: 'manual', label: 'Ideia manual', icon: FileText },
@@ -293,143 +459,264 @@ export default function CreateContent() {
                   );
                 })}
               </div>
-            </div>
 
-            {brief.source_type !== 'manual' && (
-              <div className="rounded-2xl border border-white/10 bg-white/[0.025] p-4 space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3">
-                  <div className="space-y-2">
-                    <label className="premium-label">{brief.source_type === 'youtube' ? 'URL do video' : 'URL do feed ou artigo'}</label>
-                    <input
-                      value={brief.source_url || ''}
-                      onChange={(e) => updateBrief('source_url', e.target.value)}
-                      placeholder={brief.source_type === 'youtube' ? 'https://www.youtube.com/watch?v=...' : 'https://portal.com/feed ou https://portal.com/artigo'}
-                      className={inputCls}
-                    />
-                  </div>
-                  <div className="flex items-end">
-                    <button
-                      type="button"
-                      onClick={handleLoadSource}
-                      disabled={loadingSource}
-                      className="premium-button-secondary h-[46px] flex items-center gap-2"
-                    >
-                      {loadingSource ? <Loader2 className="w-4 h-4 animate-spin" /> : <Link2 className="w-4 h-4" />}
-                      Buscar fonte
-                    </button>
-                  </div>
+              <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-sm text-slate-300">
+                {brief.source_type === 'manual' && 'Descreva a ideia ou cole bastidores. A IA vai transformar isso em tese, estrutura e CTA.'}
+                {brief.source_type === 'youtube' && 'Cole a URL do video e depois a transcricao, resumo ou bullets principais. Isso evita um carrossel bonito, mas pouco fiel.'}
+                {brief.source_type === 'rss' && 'Cole a URL do feed ou artigo, confirme a fonte e use o angulo para dizer qual leitura editorial queremos fazer.'}
+              </div>
+
+              {brief.source_type !== 'manual' && (
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={resetSourceFlow}
+                    className="text-xs font-bold uppercase tracking-widest text-slate-500 transition hover:text-white"
+                  >
+                    Limpar fonte atual
+                  </button>
                 </div>
+              )}
 
-                {brief.source_type === 'youtube' && (
-                  <div className="space-y-2">
-                    <label className="premium-label">Titulo opcional do video</label>
-                    <input
-                      value={brief.source_title || ''}
-                      onChange={(e) => updateBrief('source_title', e.target.value)}
-                      placeholder="Ex: A verdade sobre conteudo que vende"
-                      className={inputCls}
-                    />
-                  </div>
-                )}
-
-                {(sourcePreview || brief.source_image_url || brief.source_title) && (
-                  <div className={`grid grid-cols-1 gap-4 rounded-xl border border-white/10 bg-black/20 p-3 ${(sourcePreview?.imageUrl || brief.source_image_url) ? 'md:grid-cols-[120px_1fr]' : ''}`}>
-                    {(sourcePreview?.imageUrl || brief.source_image_url) && (
-                      <img
-                        src={sourcePreview?.imageUrl || brief.source_image_url}
-                        alt=""
-                        className="h-32 w-full md:h-full rounded-lg object-cover grayscale"
+              {brief.source_type !== 'manual' && (
+                <div className="rounded-2xl border border-white/10 bg-white/[0.025] p-4 space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3">
+                    <div className="space-y-2">
+                      <label className="premium-label">{brief.source_type === 'youtube' ? 'URL do video' : 'URL do feed ou artigo'}</label>
+                      <input
+                        value={brief.source_url || ''}
+                        onChange={(e) => updateBrief('source_url', e.target.value)}
+                        placeholder={brief.source_type === 'youtube' ? 'https://www.youtube.com/watch?v=...' : 'https://portal.com/feed ou https://portal.com/artigo'}
+                        className={inputCls}
                       />
-                    )}
-                    <div className="min-w-0 space-y-2">
-                      <p className="text-sm font-bold text-white line-clamp-2">{sourcePreview?.title || brief.source_title || 'Fonte carregada'}</p>
-                      <p className="text-xs text-slate-500 truncate">{sourcePreview?.url || brief.source_url}</p>
-                      {(sourcePreview?.excerpt || brief.source_excerpt) && (
-                        <p className="text-sm text-slate-400 leading-relaxed line-clamp-4">{sourcePreview?.excerpt || brief.source_excerpt}</p>
-                      )}
+                    </div>
+                    <div className="flex items-end">
+                      <button
+                        type="button"
+                        onClick={handleLoadSource}
+                        disabled={loadingSource}
+                        className="premium-button-secondary h-[46px] flex items-center gap-2"
+                      >
+                        {loadingSource ? <Loader2 className="w-4 h-4 animate-spin" /> : <Link2 className="w-4 h-4" />}
+                        {brief.source_type === 'youtube' ? 'Confirmar video' : 'Buscar fonte'}
+                      </button>
                     </div>
                   </div>
+
+                  {brief.source_type === 'youtube' && (
+                    <div className="space-y-2">
+                      <label className="premium-label">Titulo opcional do video</label>
+                      <input
+                        value={brief.source_title || ''}
+                        onChange={(e) => updateBrief('source_title', e.target.value)}
+                        placeholder="Ex: A verdade sobre conteudo que vende"
+                        className={inputCls}
+                      />
+                    </div>
+                  )}
+
+                  {(sourcePreview || brief.source_image_url || brief.source_title) && (
+                    <div className={`grid grid-cols-1 gap-4 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3 ${(sourcePreview?.imageUrl || brief.source_image_url) ? 'md:grid-cols-[120px_1fr]' : ''}`}>
+                      {(sourcePreview?.imageUrl || brief.source_image_url) && (
+                        <img
+                          src={sourcePreview?.imageUrl || brief.source_image_url}
+                          alt=""
+                          className="h-32 w-full md:h-full rounded-lg object-cover grayscale"
+                        />
+                      )}
+                      <div className="min-w-0 space-y-2">
+                        <div className="inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-black uppercase tracking-widest text-emerald-200">
+                          <span className="h-2 w-2 rounded-full bg-emerald-300" />
+                          Fonte pronta para gerar
+                        </div>
+                        <p className="text-sm font-bold text-white line-clamp-2">{sourcePreview?.title || brief.source_title || 'Fonte carregada'}</p>
+                        <p className="text-xs text-slate-500 truncate">{sourcePreview?.url || brief.source_url}</p>
+                        {(sourcePreview?.excerpt || brief.source_excerpt) && (
+                          <p className="text-sm text-slate-400 leading-relaxed line-clamp-4">{sourcePreview?.excerpt || brief.source_excerpt}</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4 space-y-4">
+              <div>
+                <p className="premium-label">Etapa 2</p>
+                <h3 className="text-lg font-bold text-white">Defina o angulo do draft</h3>
+                <p className="text-sm text-slate-500 mt-1">
+                  Aqui voce diz qual leitura a IA deve fazer da fonte em vez de apenas resumir o material.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <label className="premium-label">{brief.source_type === 'manual' ? 'Ideia central' : 'Angulo desejado'}</label>
+                <input
+                  value={brief.topic}
+                  onChange={(e) => updateBrief('topic', e.target.value)}
+                  placeholder="Ex: Por que experts bons travam na hora de vender no conteudo"
+                  className={inputCls}
+                />
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {selectedAngleSuggestions.map((suggestion) => (
+                  <button
+                    key={suggestion}
+                    type="button"
+                    onClick={() => updateBrief('topic', suggestion)}
+                    className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs text-slate-300 transition hover:border-indigo-400/40 hover:bg-indigo-500/10 hover:text-white"
+                  >
+                    {suggestion}
+                  </button>
+                ))}
+              </div>
+
+              <div className="rounded-xl border border-white/10 bg-black/20 p-4 space-y-4">
+                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <p className="premium-label">Refinar estrategia</p>
+                    <p className="text-sm text-slate-500 mt-1">Esses campos deixam o draft menos generico, mas entram depois da fonte e do angulo.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowRefinement((prev) => !prev)}
+                    className="text-xs font-bold uppercase tracking-widest text-slate-400 transition hover:text-white"
+                  >
+                    {showRefinement || hasRefinement ? 'Ocultar refino' : 'Abrir refino'}
+                  </button>
+                </div>
+
+                {(showRefinement || hasRefinement) && (
+                  <>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label className="premium-label">Objetivo do post</label>
+                        <textarea
+                          rows={4}
+                          value={brief.goal}
+                          onChange={(e) => updateBrief('goal', e.target.value)}
+                          className={`${inputCls} resize-none`}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="premium-label">Publico especifico</label>
+                        <textarea
+                          rows={4}
+                          value={brief.audience}
+                          onChange={(e) => updateBrief('audience', e.target.value)}
+                          placeholder="Ex: experts que ja vendem, mas dependem de indicacao e querem criar demanda pelo Instagram"
+                          className={`${inputCls} resize-none`}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label className="premium-label">CTA</label>
+                        <textarea
+                          rows={3}
+                          value={brief.cta}
+                          onChange={(e) => updateBrief('cta', e.target.value)}
+                          className={`${inputCls} resize-none`}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="premium-label">Notas, transcricao ou bastidor</label>
+                        <textarea
+                          rows={4}
+                          value={brief.source_notes}
+                          onChange={(e) => updateBrief('source_notes', e.target.value)}
+                          placeholder="Cole aqui um insight bruto, transcricao curta, historia ou bullets do expert."
+                          className={`${inputCls} resize-none`}
+                        />
+                        <div className="flex flex-wrap items-center gap-3 pt-1">
+                          {!brief.source_notes.trim() && (
+                            <button
+                              type="button"
+                              onClick={applySourceNotesTemplate}
+                              className="text-xs font-bold uppercase tracking-widest text-indigo-300 transition hover:text-white"
+                            >
+                              Inserir modelo de notas
+                            </button>
+                          )}
+                          <span className="text-xs text-slate-500">
+                            {brief.source_type === 'manual' && 'Bom para bastidor, insight bruto ou historia curta.'}
+                            {brief.source_type === 'youtube' && 'Ideal: resumo do video, bullets centrais e uma frase forte.'}
+                            {brief.source_type === 'rss' && 'Ideal: resumo da materia, dado principal e leitura editorial.'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </>
                 )}
-              </div>
-            )}
-
-            <div className="space-y-2">
-              <label className="premium-label">{brief.source_type === 'manual' ? 'Ideia central' : 'Angulo desejado'}</label>
-              <input
-                value={brief.topic}
-                onChange={(e) => updateBrief('topic', e.target.value)}
-                placeholder="Ex: Por que experts bons travam na hora de vender no conteúdo"
-                className={inputCls}
-              />
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="premium-label">Objetivo do post</label>
-                <textarea
-                  rows={4}
-                  value={brief.goal}
-                  onChange={(e) => updateBrief('goal', e.target.value)}
-                  className={`${inputCls} resize-none`}
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="premium-label">Público específico</label>
-                <textarea
-                  rows={4}
-                  value={brief.audience}
-                  onChange={(e) => updateBrief('audience', e.target.value)}
-                  placeholder="Ex: experts que já vendem, mas dependem de indicação e querem criar demanda pelo Instagram"
-                  className={`${inputCls} resize-none`}
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="premium-label">CTA</label>
-                <textarea
-                  rows={3}
-                  value={brief.cta}
-                  onChange={(e) => updateBrief('cta', e.target.value)}
-                  className={`${inputCls} resize-none`}
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="premium-label">Notas, transcrição ou bastidor</label>
-                <textarea
-                  rows={3}
-                  value={brief.source_notes}
-                  onChange={(e) => updateBrief('source_notes', e.target.value)}
-                  placeholder="Cole aqui um insight bruto, transcrição curta, história ou bullets do expert."
-                  className={`${inputCls} resize-none`}
-                />
               </div>
             </div>
           </div>
 
           <div className="premium-card p-6 space-y-4">
-            <h2 className="font-bold text-white text-xl">Template visual</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {carouselTemplates.map((template) => (
-                <button
-                  key={template.id}
-                  type="button"
-                  onClick={() => updateBrief('template_id', template.id)}
-                  className={`text-left rounded-2xl border p-4 transition-all ${brief.template_id === template.id ? 'border-indigo-400 bg-indigo-500/10' : 'border-white/10 bg-white/[0.02] hover:bg-white/[0.04]'}`}
-                >
-                  <div className="aspect-[4/5] rounded-xl p-5 flex flex-col justify-between overflow-hidden" style={{ background: template.gradient, color: template.textColor }}>
-                    <span className="text-[10px] font-black uppercase tracking-widest" style={{ color: template.accentColor }}>{template.badge}</span>
-                    <div>
-                      <p className="text-2xl font-black leading-tight">{template.name}</p>
-                      <div className="w-14 h-1 rounded-full mt-4" style={{ backgroundColor: template.accentColor }} />
-                    </div>
-                  </div>
-                  <p className="font-bold text-white mt-3">{template.name}</p>
-                  <p className="text-xs text-slate-500 mt-1 leading-relaxed">{template.description}</p>
-                </button>
-              ))}
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="premium-label">Etapa 3</p>
+                <h2 className="font-bold text-white text-xl">Visual do carrossel</h2>
+                <p className="text-sm text-slate-500 mt-1">
+                  Escolha o template agora ou depois do primeiro draft. A decisao visual nao precisa travar a ideia.
+                </p>
+              </div>
+              <span className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-[11px] font-black uppercase tracking-widest text-slate-400">
+                Opcional antes de gerar
+              </span>
             </div>
+
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+              <div className="grid gap-4 md:grid-cols-[160px_1fr_auto] md:items-center">
+                <div className="aspect-[4/5] rounded-xl p-5 flex flex-col justify-between overflow-hidden" style={{ background: selectedTemplate.gradient, color: selectedTemplate.textColor }}>
+                  <span className="text-[10px] font-black uppercase tracking-widest" style={{ color: selectedTemplate.accentColor }}>{selectedTemplate.badge}</span>
+                  <div>
+                    <p className="text-2xl font-black leading-tight">{selectedTemplate.name}</p>
+                    <div className="w-14 h-1 rounded-full mt-4" style={{ backgroundColor: selectedTemplate.accentColor }} />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <p className="text-sm font-bold text-white">Template atual: {selectedTemplate.name}</p>
+                  <p className="text-sm text-slate-400 leading-relaxed">{selectedTemplate.description}</p>
+                  <p className="text-xs text-slate-500">Se preferir, gere primeiro e troque o visual depois de validar a promessa.</p>
+                </div>
+                <div className="flex md:justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setShowTemplatePicker((prev) => !prev)}
+                    className="premium-button-secondary"
+                  >
+                    {showTemplatePicker ? 'Ocultar templates' : 'Trocar template'}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {(showTemplatePicker || !!strategy) && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {carouselTemplates.map((template) => (
+                  <button
+                    key={template.id}
+                    type="button"
+                    onClick={() => updateBrief('template_id', template.id)}
+                    className={`text-left rounded-2xl border p-4 transition-all ${brief.template_id === template.id ? 'border-indigo-400 bg-indigo-500/10' : 'border-white/10 bg-white/[0.02] hover:bg-white/[0.04]'}`}
+                  >
+                    <div className="aspect-[4/5] rounded-xl p-5 flex flex-col justify-between overflow-hidden" style={{ background: template.gradient, color: template.textColor }}>
+                      <span className="text-[10px] font-black uppercase tracking-widest" style={{ color: template.accentColor }}>{template.badge}</span>
+                      <div>
+                        <p className="text-2xl font-black leading-tight">{template.name}</p>
+                        <div className="w-14 h-1 rounded-full mt-4" style={{ backgroundColor: template.accentColor }} />
+                      </div>
+                    </div>
+                    <p className="font-bold text-white mt-3">{template.name}</p>
+                    <p className="text-xs text-slate-500 mt-1 leading-relaxed">{template.description}</p>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {error && (
@@ -439,14 +726,17 @@ export default function CreateContent() {
           )}
 
           <div className="flex justify-end gap-3">
-            <button
-              onClick={handleGenerate}
-              disabled={generating || saving}
-              className="premium-button-primary flex items-center gap-3"
-            >
-              {generating ? <Loader2 className="w-5 h-5 animate-spin" /> : strategy ? <RefreshCw className="w-5 h-5" /> : <Wand2 className="w-5 h-5" />}
-              {generating ? 'Gerando estratégia...' : strategy ? 'Regenerar estratégia' : 'Gerar estratégia'}
-            </button>
+            <div className="flex w-full flex-col items-end gap-2">
+              <p className={`text-sm ${canGenerate ? 'text-emerald-300' : 'text-amber-200'}`}>{generateHint}</p>
+              <button
+                onClick={handleGenerate}
+                disabled={generating || saving || !canGenerate}
+                className="premium-button-primary flex items-center gap-3 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {generating ? <Loader2 className="w-5 h-5 animate-spin" /> : strategy ? <RefreshCw className="w-5 h-5" /> : <Wand2 className="w-5 h-5" />}
+                {generating ? 'Gerando estrategia...' : strategy ? 'Regenerar estrategia' : 'Gerar estrategia'}
+              </button>
+            </div>
           </div>
         </section>
 
@@ -471,16 +761,57 @@ export default function CreateContent() {
 
             <div className="premium-card overflow-hidden">
               <div className="p-5 border-b border-white/5 flex items-center justify-between">
-                <h3 className="font-bold text-white">Prévia estratégica</h3>
+                <div>
+                  <h3 className="font-bold text-white">Previa estrategica</h3>
+                  <p className="text-xs text-slate-500 mt-1">Acompanhe a qualidade do input antes de abrir o editor.</p>
+                </div>
                 {strategy && (
                   <span className="text-xs font-black text-emerald-300">{strategy.readiness_score}/100</span>
                 )}
               </div>
 
               {!strategy ? (
-                <div className="p-8 text-center text-slate-600">
-                  <Sparkles className="w-10 h-10 mx-auto mb-4 text-slate-800" />
-                  <p className="text-sm">Gere a estratégia para revisar promessa, ângulo, slides e CTA antes do editor.</p>
+                <div className="p-5 space-y-5">
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="premium-label">Estado atual</p>
+                      <span className={`rounded-full border px-2.5 py-1 text-[11px] font-black uppercase tracking-widest ${sourceStatus.ready ? 'border-emerald-400/20 bg-emerald-500/10 text-emerald-200' : 'border-amber-400/20 bg-amber-500/10 text-amber-100'}`}>
+                        {sourceStatus.title}
+                      </span>
+                    </div>
+                    <PreviewRow label="Fonte" value={brief.source_type === 'manual' ? 'Ideia manual' : brief.source_type === 'youtube' ? 'YouTube' : 'RSS / Portal'} />
+                    <PreviewRow label="Proximo passo" value={sourceStatus.detail} />
+                    <PreviewRow label="Angulo" value={brief.topic || 'Defina a leitura que queremos tirar dessa fonte.'} />
+                    <PreviewRow label="Template" value={selectedTemplate.name} />
+                  </div>
+
+                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4 space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="premium-label">Checklist de prontidao</p>
+                      <span className="text-xs font-black text-white">{readinessPercent}%</span>
+                    </div>
+                    <div className="h-2 overflow-hidden rounded-full bg-white/5">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-amber-300 via-indigo-400 to-emerald-300 transition-all"
+                        style={{ width: `${readinessPercent}%` }}
+                      />
+                    </div>
+                    <div className="space-y-3">
+                      {readinessItems.map((item) => (
+                        <ReadinessRow
+                          key={item.label}
+                          label={item.label}
+                          done={item.done}
+                          detail={item.detail}
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-dashed border-white/10 bg-black/20 p-5 text-center text-slate-500">
+                    <Sparkles className="w-10 h-10 mx-auto mb-4 text-slate-700" />
+                    <p className="text-sm">{generateHint}</p>
+                  </div>
                 </div>
               ) : (
                 <div className="p-5 space-y-5">
@@ -501,7 +832,7 @@ export default function CreateContent() {
 
                   <div className="space-y-3">
                     <PreviewRow label="Promessa" value={strategy.promise} />
-                    <PreviewRow label="Ângulo" value={strategy.angle} />
+                    <PreviewRow label="Angulo" value={strategy.angle} />
                     <PreviewRow label="CTA" value={strategy.cta} />
                   </div>
 
@@ -533,11 +864,53 @@ export default function CreateContent() {
   );
 }
 
+function StepCard({ step, title, description, active }: { step: string; title: string; description: string; active?: boolean }) {
+  return (
+    <div className={`rounded-2xl border p-4 ${active ? 'border-indigo-400/30 bg-indigo-500/10' : 'border-white/10 bg-white/[0.02]'}`}>
+      <div className="flex items-center gap-3">
+        <div className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-black ${active ? 'bg-indigo-300 text-slate-950' : 'bg-white/10 text-slate-300'}`}>
+          {step}
+        </div>
+        <p className="text-sm font-bold text-white">{title}</p>
+      </div>
+      <p className="mt-3 text-sm leading-relaxed text-slate-500">{description}</p>
+    </div>
+  );
+}
+
+function SummaryChip({ label, tone = 'default' }: { label: string; tone?: 'default' | 'filled' | 'muted' }) {
+  const cls = tone === 'filled'
+    ? 'border-indigo-400/30 bg-indigo-500/10 text-white'
+    : tone === 'muted'
+      ? 'border-white/10 bg-white/[0.02] text-slate-400'
+      : 'border-white/10 bg-black/20 text-slate-200';
+
+  return (
+    <span className={`rounded-full border px-3 py-1.5 text-xs font-bold ${cls}`}>
+      {label}
+    </span>
+  );
+}
+
 function PreviewRow({ label, value }: { label: string; value: string }) {
   return (
     <div>
       <p className="premium-label">{label}</p>
       <p className="text-sm text-slate-300 mt-1 leading-relaxed">{value}</p>
+    </div>
+  );
+}
+
+function ReadinessRow({ label, done, detail }: { label: string; done: boolean; detail: string }) {
+  return (
+    <div className="flex items-start gap-3">
+      <div className={`mt-0.5 h-5 w-5 rounded-full border ${done ? 'border-emerald-400/30 bg-emerald-500/10' : 'border-amber-400/20 bg-amber-500/10'} flex items-center justify-center`}>
+        <span className={`h-2 w-2 rounded-full ${done ? 'bg-emerald-300' : 'bg-amber-300'}`} />
+      </div>
+      <div>
+        <p className={`text-sm font-bold ${done ? 'text-white' : 'text-slate-200'}`}>{label}</p>
+        <p className="mt-1 text-sm leading-relaxed text-slate-500">{detail}</p>
+      </div>
     </div>
   );
 }

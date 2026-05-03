@@ -10,6 +10,7 @@ import { generateContentStrategy, generateSourceCarouselStrategy } from '../serv
 import { fetchRssSource, getYouTubeThumbnail, type SourcePreview } from '../services/sourceService';
 
 const inputCls = 'w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500';
+type SourceType = NonNullable<ContentBrief['source_type']>;
 
 const angleSuggestions = {
   manual: [
@@ -27,13 +28,13 @@ const angleSuggestions = {
     'A tese por tras desse movimento',
     'Como usar esse gancho sem soar oportunista',
   ],
-} satisfies Record<ContentBrief['source_type'], string[]>;
+} satisfies Record<SourceType, string[]>;
 
 const sourceNoteTemplates = {
   manual: 'Contexto rapido:\n- \n\nPonto principal:\n- \n\nExemplo ou bastidor:\n- ',
   youtube: 'Resumo do video:\n- \n\nPontos mais fortes:\n- \n- \n\nFrase ou argumento que merece virar carrossel:\n- ',
   rss: 'Resumo da materia:\n- \n\nDado, movimento ou noticia principal:\n- \n\nLeitura editorial que queremos fazer:\n- ',
-} satisfies Record<ContentBrief['source_type'], string>;
+} satisfies Record<SourceType, string>;
 
 export default function CreateContent() {
   const navigate = useNavigate();
@@ -77,22 +78,28 @@ export default function CreateContent() {
   const selectedProject = projects.find((project) => project.id === brief.project_id);
   const selectedPreset = useMemo(() => getExpertContentPreset(brief.preset_id), [brief.preset_id]);
   const selectedTemplate = useMemo(() => getCarouselTemplate(brief.template_id), [brief.template_id]);
-  const isSourceFlow = brief.source_type === 'youtube' || brief.source_type === 'rss';
-  const selectedAngleSuggestions = angleSuggestions[brief.source_type];
-  const selectedSourceTemplate = sourceNoteTemplates[brief.source_type];
+  const sourceType: SourceType = brief.source_type ?? 'manual';
+  const sourceNotes = brief.source_notes ?? '';
+  const sourceUrl = brief.source_url ?? '';
+  const sourceExcerpt = brief.source_excerpt ?? '';
+  const sourceTitle = brief.source_title ?? '';
+  const sourceImageUrl = brief.source_image_url ?? '';
+  const isSourceFlow = sourceType === 'youtube' || sourceType === 'rss';
+  const selectedAngleSuggestions = angleSuggestions[sourceType];
+  const selectedSourceTemplate = sourceNoteTemplates[sourceType];
   const angleReady = brief.topic.trim().length > 0;
   const hasRefinement = brief.audience.trim().length > 0 || brief.cta.trim().length > 0 || brief.goal.trim().length > 0;
 
   const sourceStatus = useMemo(() => {
-    if (brief.source_type === 'manual') {
+    if (sourceType === 'manual') {
       return {
-        ready: brief.topic.trim().length > 0 || brief.source_notes.trim().length > 0,
+        ready: brief.topic.trim().length > 0 || sourceNotes.trim().length > 0,
         title: 'Ideia em montagem',
         detail: brief.topic.trim() ? 'A ideia principal ja foi definida.' : 'Descreva a ideia central ou cole bastidores para a IA sair do generico.',
       };
     }
 
-    if (!brief.source_url.trim()) {
+    if (!sourceUrl.trim()) {
       return {
         ready: false,
         title: 'URL pendente',
@@ -100,7 +107,7 @@ export default function CreateContent() {
       };
     }
 
-    if (brief.source_type === 'youtube' && !brief.source_notes.trim()) {
+    if (sourceType === 'youtube' && !sourceNotes.trim()) {
       return {
         ready: false,
         title: 'Falta contexto do video',
@@ -108,7 +115,7 @@ export default function CreateContent() {
       };
     }
 
-    if (brief.source_type === 'rss' && !brief.source_excerpt.trim() && !brief.source_notes.trim()) {
+    if (sourceType === 'rss' && !sourceExcerpt.trim() && !sourceNotes.trim()) {
       return {
         ready: false,
         title: 'Fonte nao confirmada',
@@ -121,7 +128,7 @@ export default function CreateContent() {
       title: 'Fonte pronta',
       detail: 'A base ja foi entendida. Agora ajuste o angulo e gere o draft.',
     };
-  }, [brief.source_excerpt, brief.source_notes, brief.source_type, brief.source_url, brief.topic]);
+  }, [brief.topic, sourceExcerpt, sourceNotes, sourceType, sourceUrl]);
 
   const canGenerate = sourceStatus.ready && angleReady;
   const generateHint = !sourceStatus.ready
@@ -182,7 +189,7 @@ export default function CreateContent() {
   }
 
   function applySourceNotesTemplate() {
-    if (brief.source_notes.trim()) return;
+    if (sourceNotes.trim()) return;
     updateBrief('source_notes', selectedSourceTemplate);
     setShowRefinement(true);
   }
@@ -203,7 +210,7 @@ export default function CreateContent() {
   }
 
   async function handleLoadSource() {
-    if (!brief.source_url?.trim()) {
+    if (!sourceUrl.trim()) {
       setError('Cole uma URL antes de buscar a fonte.');
       return;
     }
@@ -212,14 +219,14 @@ export default function CreateContent() {
     setError('');
     setStrategy(null);
     try {
-      if (brief.source_type === 'youtube') {
-        const imageUrl = getYouTubeThumbnail(brief.source_url);
+      if (sourceType === 'youtube') {
+        const imageUrl = getYouTubeThumbnail(sourceUrl);
         const preview: SourcePreview = {
-          title: brief.source_title || 'Video do YouTube',
-          url: brief.source_url,
+          title: sourceTitle || 'Video do YouTube',
+          url: sourceUrl,
           imageUrl,
-          excerpt: brief.source_notes?.slice(0, 700) || '',
-          text: brief.source_notes || '',
+          excerpt: sourceNotes.slice(0, 700) || '',
+          text: sourceNotes,
         };
         setSourcePreview(preview);
         setBrief((prev) => ({
@@ -228,8 +235,8 @@ export default function CreateContent() {
           source_image_url: imageUrl,
           source_excerpt: preview.excerpt,
         }));
-      } else if (brief.source_type === 'rss') {
-        const preview = await fetchRssSource(brief.source_url);
+      } else if (sourceType === 'rss') {
+        const preview = await fetchRssSource(sourceUrl);
         setSourcePreview(preview);
         setBrief((prev) => ({
           ...prev,
@@ -253,26 +260,26 @@ export default function CreateContent() {
       setError('Descreva a ideia central do carrossel antes de gerar.');
       return;
     }
-    if (isSourceFlow && !brief.source_url?.trim()) {
+    if (isSourceFlow && !sourceUrl.trim()) {
       setError('Cole a URL da fonte antes de gerar.');
       return;
     }
-    if (brief.source_type === 'youtube' && !brief.source_notes?.trim()) {
+    if (sourceType === 'youtube' && !sourceNotes.trim()) {
       setError('Cole a transcricao ou notas do video para gerar um carrossel fiel.');
       return;
     }
-    if (brief.source_type === 'rss' && !brief.source_notes?.trim() && !brief.source_excerpt?.trim()) {
+    if (sourceType === 'rss' && !sourceNotes.trim() && !sourceExcerpt.trim()) {
       setError('Busque a fonte RSS/portal antes de gerar, ou cole um trecho nas notas.');
       return;
     }
 
     const preparedBrief: ContentBrief = {
       ...brief,
-      source_image_url: brief.source_type === 'youtube'
-        ? brief.source_image_url || getYouTubeThumbnail(brief.source_url || '')
-        : brief.source_image_url,
-      source_title: brief.source_title || (brief.source_type === 'youtube' ? 'Video do YouTube' : brief.source_title),
-      source_excerpt: brief.source_excerpt || brief.source_notes?.slice(0, 700) || '',
+      source_image_url: sourceType === 'youtube'
+        ? sourceImageUrl || getYouTubeThumbnail(sourceUrl)
+        : sourceImageUrl,
+      source_title: sourceTitle || (sourceType === 'youtube' ? 'Video do YouTube' : sourceTitle),
+      source_excerpt: sourceExcerpt || sourceNotes.slice(0, 700) || '',
     };
     if (
       preparedBrief.source_image_url !== brief.source_image_url ||
@@ -387,7 +394,7 @@ export default function CreateContent() {
               <div className="mt-3 flex flex-wrap gap-2">
                 <SummaryChip label={selectedProject?.name || 'Sem projeto'} tone={selectedProject ? 'filled' : 'muted'} />
                 <SummaryChip label={selectedPreset.label} />
-                <SummaryChip label={brief.source_type === 'manual' ? 'Ideia manual' : brief.source_type === 'youtube' ? 'Fonte: YouTube' : 'Fonte: RSS / Portal'} />
+                <SummaryChip label={sourceType === 'manual' ? 'Ideia manual' : sourceType === 'youtube' ? 'Fonte: YouTube' : 'Fonte: RSS / Portal'} />
                 <SummaryChip label={angleReady ? 'Angulo definido' : 'Falta angulo'} tone={angleReady ? 'filled' : 'muted'} />
                 <SummaryChip label={selectedTemplate.name} />
               </div>
@@ -461,12 +468,12 @@ export default function CreateContent() {
               </div>
 
               <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-sm text-slate-300">
-                {brief.source_type === 'manual' && 'Descreva a ideia ou cole bastidores. A IA vai transformar isso em tese, estrutura e CTA.'}
-                {brief.source_type === 'youtube' && 'Cole a URL do video e depois a transcricao, resumo ou bullets principais. Isso evita um carrossel bonito, mas pouco fiel.'}
-                {brief.source_type === 'rss' && 'Cole a URL do feed ou artigo, confirme a fonte e use o angulo para dizer qual leitura editorial queremos fazer.'}
+                {sourceType === 'manual' && 'Descreva a ideia ou cole bastidores. A IA vai transformar isso em tese, estrutura e CTA.'}
+                {sourceType === 'youtube' && 'Cole a URL do video e depois a transcricao, resumo ou bullets principais. Isso evita um carrossel bonito, mas pouco fiel.'}
+                {sourceType === 'rss' && 'Cole a URL do feed ou artigo, confirme a fonte e use o angulo para dizer qual leitura editorial queremos fazer.'}
               </div>
 
-              {brief.source_type !== 'manual' && (
+              {sourceType !== 'manual' && (
                 <div className="flex justify-end">
                   <button
                     type="button"
@@ -478,15 +485,15 @@ export default function CreateContent() {
                 </div>
               )}
 
-              {brief.source_type !== 'manual' && (
+              {sourceType !== 'manual' && (
                 <div className="rounded-2xl border border-white/10 bg-white/[0.025] p-4 space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3">
                     <div className="space-y-2">
-                      <label className="premium-label">{brief.source_type === 'youtube' ? 'URL do video' : 'URL do feed ou artigo'}</label>
+                      <label className="premium-label">{sourceType === 'youtube' ? 'URL do video' : 'URL do feed ou artigo'}</label>
                       <input
-                        value={brief.source_url || ''}
+                        value={sourceUrl}
                         onChange={(e) => updateBrief('source_url', e.target.value)}
-                        placeholder={brief.source_type === 'youtube' ? 'https://www.youtube.com/watch?v=...' : 'https://portal.com/feed ou https://portal.com/artigo'}
+                        placeholder={sourceType === 'youtube' ? 'https://www.youtube.com/watch?v=...' : 'https://portal.com/feed ou https://portal.com/artigo'}
                         className={inputCls}
                       />
                     </div>
@@ -498,16 +505,16 @@ export default function CreateContent() {
                         className="premium-button-secondary h-[46px] flex items-center gap-2"
                       >
                         {loadingSource ? <Loader2 className="w-4 h-4 animate-spin" /> : <Link2 className="w-4 h-4" />}
-                        {brief.source_type === 'youtube' ? 'Confirmar video' : 'Buscar fonte'}
+                        {sourceType === 'youtube' ? 'Confirmar video' : 'Buscar fonte'}
                       </button>
                     </div>
                   </div>
 
-                  {brief.source_type === 'youtube' && (
+                  {sourceType === 'youtube' && (
                     <div className="space-y-2">
                       <label className="premium-label">Titulo opcional do video</label>
                       <input
-                        value={brief.source_title || ''}
+                        value={sourceTitle}
                         onChange={(e) => updateBrief('source_title', e.target.value)}
                         placeholder="Ex: A verdade sobre conteudo que vende"
                         className={inputCls}
@@ -515,11 +522,11 @@ export default function CreateContent() {
                     </div>
                   )}
 
-                  {(sourcePreview || brief.source_image_url || brief.source_title) && (
-                    <div className={`grid grid-cols-1 gap-4 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3 ${(sourcePreview?.imageUrl || brief.source_image_url) ? 'md:grid-cols-[120px_1fr]' : ''}`}>
-                      {(sourcePreview?.imageUrl || brief.source_image_url) && (
+                  {(sourcePreview || sourceImageUrl || sourceTitle) && (
+                    <div className={`grid grid-cols-1 gap-4 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3 ${(sourcePreview?.imageUrl || sourceImageUrl) ? 'md:grid-cols-[120px_1fr]' : ''}`}>
+                      {(sourcePreview?.imageUrl || sourceImageUrl) && (
                         <img
-                          src={sourcePreview?.imageUrl || brief.source_image_url}
+                          src={sourcePreview?.imageUrl || sourceImageUrl}
                           alt=""
                           className="h-32 w-full md:h-full rounded-lg object-cover grayscale"
                         />
@@ -529,10 +536,10 @@ export default function CreateContent() {
                           <span className="h-2 w-2 rounded-full bg-emerald-300" />
                           Fonte pronta para gerar
                         </div>
-                        <p className="text-sm font-bold text-white line-clamp-2">{sourcePreview?.title || brief.source_title || 'Fonte carregada'}</p>
-                        <p className="text-xs text-slate-500 truncate">{sourcePreview?.url || brief.source_url}</p>
-                        {(sourcePreview?.excerpt || brief.source_excerpt) && (
-                          <p className="text-sm text-slate-400 leading-relaxed line-clamp-4">{sourcePreview?.excerpt || brief.source_excerpt}</p>
+                        <p className="text-sm font-bold text-white line-clamp-2">{sourcePreview?.title || sourceTitle || 'Fonte carregada'}</p>
+                        <p className="text-xs text-slate-500 truncate">{sourcePreview?.url || sourceUrl}</p>
+                        {(sourcePreview?.excerpt || sourceExcerpt) && (
+                          <p className="text-sm text-slate-400 leading-relaxed line-clamp-4">{sourcePreview?.excerpt || sourceExcerpt}</p>
                         )}
                       </div>
                     </div>
@@ -551,7 +558,7 @@ export default function CreateContent() {
               </div>
 
               <div className="space-y-2">
-                <label className="premium-label">{brief.source_type === 'manual' ? 'Ideia central' : 'Angulo desejado'}</label>
+                <label className="premium-label">{sourceType === 'manual' ? 'Ideia central' : 'Angulo desejado'}</label>
                 <input
                   value={brief.topic}
                   onChange={(e) => updateBrief('topic', e.target.value)}
@@ -561,7 +568,7 @@ export default function CreateContent() {
               </div>
 
               <div className="flex flex-wrap gap-2">
-                {selectedAngleSuggestions.map((suggestion) => (
+                {selectedAngleSuggestions.map((suggestion: string) => (
                   <button
                     key={suggestion}
                     type="button"
@@ -632,7 +639,7 @@ export default function CreateContent() {
                           className={`${inputCls} resize-none`}
                         />
                         <div className="flex flex-wrap items-center gap-3 pt-1">
-                          {!brief.source_notes.trim() && (
+                          {!sourceNotes.trim() && (
                             <button
                               type="button"
                               onClick={applySourceNotesTemplate}
@@ -642,9 +649,9 @@ export default function CreateContent() {
                             </button>
                           )}
                           <span className="text-xs text-slate-500">
-                            {brief.source_type === 'manual' && 'Bom para bastidor, insight bruto ou historia curta.'}
-                            {brief.source_type === 'youtube' && 'Ideal: resumo do video, bullets centrais e uma frase forte.'}
-                            {brief.source_type === 'rss' && 'Ideal: resumo da materia, dado principal e leitura editorial.'}
+                            {sourceType === 'manual' && 'Bom para bastidor, insight bruto ou historia curta.'}
+                            {sourceType === 'youtube' && 'Ideal: resumo do video, bullets centrais e uma frase forte.'}
+                            {sourceType === 'rss' && 'Ideal: resumo da materia, dado principal e leitura editorial.'}
                           </span>
                         </div>
                       </div>
@@ -779,7 +786,7 @@ export default function CreateContent() {
                         {sourceStatus.title}
                       </span>
                     </div>
-                    <PreviewRow label="Fonte" value={brief.source_type === 'manual' ? 'Ideia manual' : brief.source_type === 'youtube' ? 'YouTube' : 'RSS / Portal'} />
+                    <PreviewRow label="Fonte" value={sourceType === 'manual' ? 'Ideia manual' : sourceType === 'youtube' ? 'YouTube' : 'RSS / Portal'} />
                     <PreviewRow label="Proximo passo" value={sourceStatus.detail} />
                     <PreviewRow label="Angulo" value={brief.topic || 'Defina a leitura que queremos tirar dessa fonte.'} />
                     <PreviewRow label="Template" value={selectedTemplate.name} />

@@ -113,26 +113,45 @@ def fetch_transcript(track) -> str:
 
 
 def resolve_source(url: str, preferred_lang: str):
+    video_id = get_video_id(url)
+    fallback_thumbnail = thumbnail_candidates(video_id)[0] if video_id else ""
+
     ydl_options = {
         "quiet": True,
         "skip_download": True,
         "no_warnings": True,
         "extract_flat": False,
+        "noplaylist": True,
     }
 
-    with YoutubeDL(ydl_options) as ydl:
-        info = ydl.extract_info(url, download=False)
+    try:
+        with YoutubeDL(ydl_options) as ydl:
+            info = ydl.extract_info(url, download=False)
+    except Exception as error:
+        return {
+            "videoId": video_id,
+            "title": "Video do YouTube",
+            "thumbnailUrl": fallback_thumbnail,
+            "transcriptText": "",
+            "transcriptLanguage": preferred_lang or "",
+            "transcriptSource": "unavailable",
+            "hasTimestamps": False,
+            "note": f"Nao foi possivel carregar a transcript automatica deste video agora. {str(error)[:180]}",
+        }
 
-    video_id = str(info.get("id") or get_video_id(url))
+    video_id = str(info.get("id") or video_id)
     title = str(info.get("title") or "Video do YouTube")
-    thumbnail_url = str(info.get("thumbnail") or (thumbnail_candidates(video_id)[0] if video_id else ""))
+    thumbnail_url = str(info.get("thumbnail") or fallback_thumbnail)
 
     official_track = pick_track(info.get("subtitles") or {}, preferred_lang)
     auto_track = pick_track(info.get("automatic_captions") or {}, preferred_lang)
 
     if official_track:
         picked = pick_format(official_track.get("formats"))
-        transcript_text = fetch_transcript(picked)
+        try:
+            transcript_text = fetch_transcript(picked)
+        except Exception:
+            transcript_text = ""
         if transcript_text:
             return {
                 "videoId": video_id,
@@ -147,7 +166,10 @@ def resolve_source(url: str, preferred_lang: str):
 
     if auto_track:
         picked = pick_format(auto_track.get("formats"))
-        transcript_text = fetch_transcript(picked)
+        try:
+            transcript_text = fetch_transcript(picked)
+        except Exception:
+            transcript_text = ""
         if transcript_text:
             return {
                 "videoId": video_id,

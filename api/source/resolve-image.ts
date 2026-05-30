@@ -1,4 +1,4 @@
-import { resolveSourceCapture } from '../_lib/source-capture';
+import { resolveSourceCapture } from '../_lib/source-capture.js';
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'GET') {

@@ -1,6 +1,6 @@
 import { collection, doc, getDoc, getDocs, query, where } from 'firebase/firestore';
 import type { Automation, ContentBrief } from '../../src/lib/types';
-import { serverDb } from './firebase-server';
+import { serverDb } from './firebase-server.js';
 
 type SourceCaptureType = NonNullable<ContentBrief['source_capture_type']>;
 type SourceCaptureStatus = NonNullable<ContentBrief['source_capture_status']>;

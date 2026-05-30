@@ -9,12 +9,12 @@ import {
   updateDoc,
   where,
 } from 'firebase/firestore';
-import { serverDb } from '../_lib/firebase-server';
-import { generateAiText } from '../_lib/ai-provider';
-import { fetchYouTubeTranscriptSource, getRequestOrigin, type YouTubeTranscriptResult } from '../_lib/youtube-transcript-client';
+import { serverDb } from '../_lib/firebase-server.js';
+import { generateAiText } from '../_lib/ai-provider.js';
+import { fetchYouTubeTranscriptSource, getRequestOrigin, type YouTubeTranscriptResult } from '../_lib/youtube-transcript-client.js';
 import type { Automation, BrandDNA, ContentBrief, Hook, Project, Slide, Slideshow } from '../../src/lib/types';
-import { assessQueueState, getAutomationHealthStatus, getAutomationIssues } from '../../src/lib/queueUtils';
-import { resolveSourceCapture } from '../_lib/source-capture';
+import { assessQueueState, getAutomationHealthStatus, getAutomationIssues } from '../../src/lib/queueUtils.js';
+import { resolveSourceCapture } from '../_lib/source-capture.js';
 
 type AutomationWithProject = Automation & { project?: Project };
 

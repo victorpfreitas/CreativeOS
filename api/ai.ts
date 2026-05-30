@@ -1,4 +1,4 @@
-import { generateAiText } from './_lib/ai-provider';
+import { generateAiText } from './_lib/ai-provider.js';
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {

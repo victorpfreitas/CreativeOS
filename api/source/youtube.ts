@@ -1,5 +1,5 @@
-import { resolveSourceCapture } from '../_lib/source-capture';
-import { fetchYouTubeTranscriptSource, getRequestOrigin } from '../_lib/youtube-transcript-client';
+import { resolveSourceCapture } from '../_lib/source-capture.js';
+import { fetchYouTubeTranscriptSource, getRequestOrigin } from '../_lib/youtube-transcript-client.js';
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'GET') {

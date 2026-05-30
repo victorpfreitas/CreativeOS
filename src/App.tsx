@@ -12,9 +12,11 @@ const ContentAnalysis = lazy(() => import('./pages/ContentAnalysis'));
 const WeeklyPlanning = lazy(() => import('./pages/WeeklyPlanning'));
 const Automations = lazy(() => import('./pages/Automations'));
 const DraftQueue = lazy(() => import('./pages/DraftQueue'));
+const TextDraftEditor = lazy(() => import('./pages/TextDraftEditor'));
 const NewAutomation = lazy(() => import('./pages/NewAutomation'));
 const AutomationDetail = lazy(() => import('./pages/AutomationDetail'));
 const SlideshowEditor = lazy(() => import('./pages/SlideshowEditor'));
+const Schedule = lazy(() => import('./pages/Schedule'));
 const Collections = lazy(() => import('./pages/Collections'));
 const Gallery = lazy(() => import('./pages/Gallery'));
 const Login = lazy(() => import('./pages/Login'));
@@ -92,6 +94,8 @@ function App() {
                   <Route path="projects/:id/planning" element={<WeeklyPlanning />} />
                   <Route path="automations" element={<Automations />} />
                   <Route path="queue" element={<DraftQueue />} />
+                  <Route path="content/:id" element={<TextDraftEditor />} />
+                  <Route path="schedule" element={<Schedule />} />
                   <Route path="automations/new" element={<NewAutomation />} />
                   <Route path="automations/:id" element={<AutomationDetail />} />
                   <Route path="editor/:id" element={<SlideshowEditor />} />

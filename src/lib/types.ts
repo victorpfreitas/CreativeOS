@@ -26,6 +26,7 @@ export interface Project {
   id: string;
   name: string;
   knowledge_base: string;
+  voice_learning_notes?: string;
   brand_dna?: BrandDNA;
   created_at: string;
 }
@@ -206,6 +207,50 @@ export interface ContentPlan {
   created_at: string;
 }
 
+export interface ContentDraft {
+  id: string;
+  project_id: string;
+  format: 'x_post' | 'x_thread';
+  status: 'review' | 'approved' | 'scheduled';
+  scheduled_for: string | null;
+  title: string;
+  topic: string;
+  body: string;
+  thread_items: string[];
+  source_notes: string;
+  voice_notes_used: string;
+  objective: string;
+  hook: string;
+  variants: string[];
+  created_at: string;
+  updated_at: string;
+  // Joined fields
+  project?: Project;
+}
+
+export interface VoiceLearningEvent {
+  id: string;
+  project_id: string;
+  draft_id?: string;
+  event_type: 'approved' | 'edited' | 'regenerated' | 'scheduled';
+  format?: ContentDraft['format'];
+  before_text?: string;
+  after_text?: string;
+  instruction?: string;
+  learning_note?: string;
+  created_at: string;
+}
+
+export interface XContentDraftResult {
+  title: string;
+  hook: string;
+  body: string;
+  thread_items: string[];
+  objective: string;
+  variants: string[];
+  voice_notes_used: string;
+}
+
 export interface ExpertContentPreset {
   id: string;
   label: string;
@@ -234,7 +279,24 @@ export interface CarouselTemplate {
 export interface CreateProjectInput {
   name: string;
   knowledge_base: string;
+  voice_learning_notes?: string;
   brand_dna?: BrandDNA;
+}
+
+export interface CreateContentDraftInput {
+  project_id: string;
+  format: ContentDraft['format'];
+  status?: ContentDraft['status'];
+  scheduled_for?: string | null;
+  title: string;
+  topic: string;
+  body: string;
+  thread_items?: string[];
+  source_notes?: string;
+  voice_notes_used?: string;
+  objective?: string;
+  hook?: string;
+  variants?: string[];
 }
 
 export interface CreateAutomationInput {

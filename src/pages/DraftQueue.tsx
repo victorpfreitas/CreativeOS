@@ -1,43 +1,85 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowRight, CheckCircle2, Loader2, RefreshCw, Sparkles, XCircle } from 'lucide-react';
+import { ArrowRight, CalendarClock, Check, Copy, FileText, Film, Loader2, RefreshCw, Sparkles } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import type { ContentDraft, Project, Slideshow } from '../lib/types';
 import * as db from '../lib/database';
-import type { Project, Slide, Slideshow } from '../lib/types';
-import { generateSlideshow } from '../services/geminiService';
-import { fetchYouTubeSource } from '../services/sourceService';
-import { assessQueueState, getQueueLabelText, getReviewStateLabel, getSlideshowProjectId, getSourceCaptureSummary, getTranscriptSummary } from '../lib/queueUtils';
+import { getSlideshowProjectId } from '../lib/queueUtils';
 
-type FilterState = 'all' | NonNullable<Slideshow['review_state']>;
-type FilterSource = 'all' | NonNullable<Slideshow['generated_by']>;
+type BoardStatus = 'review' | 'approved' | 'scheduled';
+type BoardItem =
+  | { kind: 'content'; id: string; status: BoardStatus; draft: ContentDraft }
+  | { kind: 'carousel'; id: string; status: BoardStatus; slideshow: Slideshow };
 
-function hydrateSlides(nextSlides: Array<{ type: 'hook' | 'body'; text: string }>, currentSlides: Slide[]) {
-  return nextSlides.map((slide, index) => ({
-    ...slide,
-    image_url: currentSlides[index]?.image_url || '',
-  }));
+const columns: Array<{ id: BoardStatus; label: string; detail: string }> = [
+  { id: 'review', label: 'Para revisar', detail: 'Drafts novos esperando decisao.' },
+  { id: 'approved', label: 'Aprovado', detail: 'Aceitos, ainda sem data.' },
+  { id: 'scheduled', label: 'Agendado', detail: 'Com data no CreativeOS.' },
+];
+
+function toDatetimeLocal(value?: string | null) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const offset = date.getTimezoneOffset();
+  const local = new Date(date.getTime() - offset * 60000);
+  return local.toISOString().slice(0, 16);
+}
+
+function fromDatetimeLocal(value: string) {
+  return value ? new Date(value).toISOString() : null;
+}
+
+function getCarouselStatus(slideshow: Slideshow): BoardStatus | null {
+  if (slideshow.review_state === 'rejected') return null;
+  if (slideshow.status === 'scheduled' || slideshow.scheduled_for) return 'scheduled';
+  if (slideshow.review_state === 'approved') return 'approved';
+  if (slideshow.review_state) return 'review';
+  return null;
+}
+
+function getItemDate(item: BoardItem) {
+  return item.kind === 'content' ? item.draft.created_at : item.slideshow.created_at;
+}
+
+function getItemCopy(item: BoardItem) {
+  if (item.kind === 'carousel') return item.slideshow.caption || item.slideshow.slides?.[0]?.title || 'Carrossel';
+  if (item.draft.format === 'x_thread') {
+    return item.draft.thread_items.map((text, index) => `${index + 1}/${item.draft.thread_items.length}\n${text}`).join('\n\n');
+  }
+  return item.draft.body;
 }
 
 export default function DraftQueue() {
+  const [drafts, setDrafts] = useState<ContentDraft[]>([]);
   const [slideshows, setSlideshows] = useState<Slideshow[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
-  const [projectFilter, setProjectFilter] = useState('all');
-  const [stateFilter, setStateFilter] = useState<FilterState>('all');
-  const [sourceFilter, setSourceFilter] = useState<FilterSource>('all');
-  const [order, setOrder] = useState<'newest' | 'oldest'>('newest');
   const [actingId, setActingId] = useState<string | null>(null);
+  const [projectFilter, setProjectFilter] = useState('all');
+  const [scheduleInputs, setScheduleInputs] = useState<Record<string, string>>({});
+  const [notice, setNotice] = useState('');
 
   useEffect(() => {
     async function load() {
       try {
-        const [showData, projectData] = await Promise.all([
+        const [contentDrafts, carouselDrafts, projectData] = await Promise.all([
+          db.getContentDrafts(),
           db.getSlideshows(),
           db.getProjects(),
         ]);
-        setSlideshows(showData);
+        setDrafts(contentDrafts);
+        setSlideshows(carouselDrafts);
         setProjects(projectData);
+        const nextScheduleInputs: Record<string, string> = {};
+        contentDrafts.forEach((draft) => {
+          if (draft.scheduled_for) nextScheduleInputs[`content:${draft.id}`] = toDatetimeLocal(draft.scheduled_for);
+        });
+        carouselDrafts.forEach((slideshow) => {
+          if (slideshow.scheduled_for) nextScheduleInputs[`carousel:${slideshow.id}`] = toDatetimeLocal(slideshow.scheduled_for);
+        });
+        setScheduleInputs(nextScheduleInputs);
       } catch (error) {
-        console.error('Error loading draft queue:', error);
+        console.error('Error loading content board:', error);
       } finally {
         setLoading(false);
       }
@@ -50,119 +92,79 @@ export default function DraftQueue() {
     [projects]
   );
 
-  const filteredSlideshows = useMemo(() => {
-    const items = slideshows.filter((slideshow) => {
-      const slideshowProjectId = getSlideshowProjectId(slideshow);
-      if (projectFilter !== 'all' && slideshowProjectId !== projectFilter) return false;
-      if (stateFilter !== 'all' && slideshow.review_state !== stateFilter) return false;
-      if (sourceFilter !== 'all' && slideshow.generated_by !== sourceFilter) return false;
-      return true;
-    });
+  const boardItems = useMemo<BoardItem[]>(() => {
+    const contentItems: BoardItem[] = drafts.map((draft) => ({
+      kind: 'content',
+      id: `content:${draft.id}`,
+      status: draft.status,
+      draft,
+    }));
 
-    return items.sort((a, b) => {
-      const compare = (b.created_at || '').localeCompare(a.created_at || '');
-      return order === 'newest' ? compare : -compare;
-    });
-  }, [order, projectFilter, slideshows, sourceFilter, stateFilter]);
+    const carouselItems = slideshows
+      .map<BoardItem | null>((slideshow) => {
+        const status = getCarouselStatus(slideshow);
+        return status ? { kind: 'carousel' as const, id: `carousel:${slideshow.id}`, status, slideshow } : null;
+      })
+      .filter((item): item is BoardItem => !!item);
 
-  const queuedCount = slideshows.filter((slideshow) => slideshow.review_state === 'queued').length;
-  const reviewingCount = slideshows.filter((slideshow) => slideshow.review_state === 'reviewing').length;
-  const approvedCount = slideshows.filter((slideshow) => slideshow.review_state === 'approved').length;
+    return [...contentItems, ...carouselItems]
+      .filter((item) => {
+        if (projectFilter === 'all') return true;
+        if (item.kind === 'content') return item.draft.project_id === projectFilter;
+        return getSlideshowProjectId(item.slideshow) === projectFilter;
+      })
+      .sort((a, b) => (getItemDate(b) || '').localeCompare(getItemDate(a) || ''));
+  }, [drafts, projectFilter, slideshows]);
 
-  async function updateReviewState(slideshowId: string, reviewState: NonNullable<Slideshow['review_state']>) {
-    setActingId(slideshowId);
+  async function copyItem(item: BoardItem) {
+    await navigator.clipboard.writeText(getItemCopy(item));
+    setNotice('Conteudo copiado.');
+  }
+
+  async function moveContentDraft(draft: ContentDraft, status: BoardStatus) {
+    setActingId(`content:${draft.id}`);
     try {
-      await db.updateSlideshow(slideshowId, { review_state: reviewState });
-      setSlideshows((prev) => prev.map((slideshow) => (
-        slideshow.id === slideshowId
-          ? { ...slideshow, review_state: reviewState }
-          : slideshow
-      )));
-    } catch (error) {
-      console.error('Error updating review state:', error);
+      const updated = await db.updateContentDraft(draft.id, {
+        status,
+        scheduled_for: status === 'scheduled'
+          ? fromDatetimeLocal(scheduleInputs[`content:${draft.id}`] || '')
+          : draft.scheduled_for,
+      });
+      setDrafts((prev) => prev.map((item) => item.id === draft.id ? { ...updated, project: item.project } : item));
+      await db.createVoiceLearningEvent({
+        project_id: draft.project_id,
+        draft_id: draft.id,
+        event_type: status === 'scheduled' ? 'scheduled' : 'approved',
+        format: draft.format,
+        after_text: getItemCopy({ kind: 'content', id: `content:${draft.id}`, status, draft }),
+        instruction: status === 'scheduled' ? 'Draft agendado pelo board.' : 'Draft aprovado pelo board.',
+      });
     } finally {
       setActingId(null);
     }
   }
 
-  async function regenerateDraft(slideshow: Slideshow) {
-    if (!slideshow.automation_id || !slideshow.source_context?.hook_text) {
-      await updateReviewState(slideshow.id, 'needs_regeneration');
-      return;
-    }
-
-    setActingId(slideshow.id);
+  async function moveCarousel(slideshow: Slideshow, status: BoardStatus) {
+    setActingId(`carousel:${slideshow.id}`);
     try {
-      const automation = slideshow.automation || await db.getAutomation(slideshow.automation_id);
-      if (!automation) throw new Error('Automation not found');
-      const youtubeSource = automation.source_mode === 'youtube' && automation.youtube_source_url?.trim()
-        ? await fetchYouTubeSource(automation.youtube_source_url, automation.youtube_transcript_language || undefined).catch(() => null)
-        : null;
-      const sourceTitle = youtubeSource?.title || automation.name;
-      const sourceNotes = youtubeSource?.text || automation.narrative_prompt;
-
-      const result = await generateSlideshow({
-        hookText: slideshow.source_context.hook_text,
-        niche: automation.niche,
-        narrativePrompt: automation.narrative_prompt,
-        formatPrompt: automation.format_prompt,
-        softCta: automation.soft_cta,
-        knowledgeBase: automation.project?.knowledge_base,
-        sourceType: automation.source_mode === 'youtube' ? 'youtube' : undefined,
-        sourceTitle,
-        sourceUrl: automation.youtube_source_url,
-        sourceNotes,
+      const updated = await db.updateSlideshow(slideshow.id, {
+        review_state: status === 'review' ? 'reviewing' : 'approved',
+        status: status === 'scheduled' ? 'scheduled' : 'reviewing',
+        scheduled_for: status === 'scheduled'
+          ? fromDatetimeLocal(scheduleInputs[`carousel:${slideshow.id}`] || '')
+          : null,
       });
-      const regeneratedSlides = hydrateSlides(result.slides, slideshow.slides);
+      setSlideshows((prev) => prev.map((item) => item.id === slideshow.id ? { ...item, ...updated } : item));
+    } finally {
+      setActingId(null);
+    }
+  }
 
-      const queue = assessQueueState({
-        slides: regeneratedSlides,
-        caption: result.caption,
-        sourceTitle,
-        sourceNotes,
-      });
-
-      await db.updateSlideshow(slideshow.id, {
-        slides: regeneratedSlides,
-        caption: result.caption,
-        review_state: 'queued',
-        queue_label: queue.queueLabel,
-        queue_note: queue.queueNote,
-        source_transcript: youtubeSource?.text || '',
-        source_transcript_language: youtubeSource?.language || '',
-        source_transcript_source: youtubeSource?.transcriptSource,
-        source_transcript_status: youtubeSource?.text ? (youtubeSource.transcriptSource === 'auto' ? 'partial' : 'ready') : 'failed',
-        source_transcript_note: youtubeSource?.note || '',
-        source_capture_type: youtubeSource?.sourceCaptureType || slideshow.source_capture_type,
-        source_capture_url: youtubeSource?.sourceCaptureUrl || slideshow.source_capture_url || '',
-        source_capture_status: youtubeSource?.sourceCaptureStatus || slideshow.source_capture_status,
-        source_capture_note: youtubeSource?.sourceCaptureNote || slideshow.source_capture_note || '',
-      });
-
-      setSlideshows((prev) => prev.map((item) => (
-        item.id === slideshow.id
-          ? {
-              ...item,
-              automation,
-              slides: regeneratedSlides,
-              caption: result.caption,
-              review_state: 'queued',
-              queue_label: queue.queueLabel,
-              queue_note: queue.queueNote,
-              source_transcript: youtubeSource?.text || '',
-              source_transcript_language: youtubeSource?.language || '',
-              source_transcript_source: youtubeSource?.transcriptSource,
-              source_transcript_status: youtubeSource?.text ? (youtubeSource.transcriptSource === 'auto' ? 'partial' : 'ready') : 'failed',
-              source_transcript_note: youtubeSource?.note || '',
-              source_capture_type: youtubeSource?.sourceCaptureType || item.source_capture_type,
-              source_capture_url: youtubeSource?.sourceCaptureUrl || item.source_capture_url || '',
-              source_capture_status: youtubeSource?.sourceCaptureStatus || item.source_capture_status,
-              source_capture_note: youtubeSource?.sourceCaptureNote || item.source_capture_note || '',
-            }
-          : item
-      )));
-    } catch (error) {
-      console.error('Error regenerating slideshow:', error);
+  async function requestNewCarouselVersion(slideshow: Slideshow) {
+    setActingId(`carousel:${slideshow.id}`);
+    try {
+      const updated = await db.updateSlideshow(slideshow.id, { review_state: 'needs_regeneration' });
+      setSlideshows((prev) => prev.map((item) => item.id === slideshow.id ? { ...item, ...updated } : item));
     } finally {
       setActingId(null);
     }
@@ -170,201 +172,197 @@ export default function DraftQueue() {
 
   if (loading) {
     return (
-      <div className="space-y-6">
-        <div className="h-10 w-56 bg-slate-200 rounded-lg animate-pulse" />
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          {[1, 2, 3].map((item) => <div key={item} className="h-28 bg-slate-100 rounded-xl animate-pulse" />)}
-        </div>
+      <div className="min-h-[320px] flex items-center justify-center text-slate-500">
+        <Loader2 className="h-8 w-8 animate-spin text-indigo-300" />
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <header className="space-y-3">
-        <div className="inline-flex items-center gap-2 text-[11px] font-black uppercase tracking-widest text-indigo-300">
-          <Sparkles className="w-4 h-4" /> Fila operacional
-        </div>
+    <div className="space-y-6 pb-10">
+      <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-white">Draft queue por projeto</h1>
-          <p className="text-slate-500 mt-1">Tudo o que foi gerado automaticamente ou entrou em revisao fica centralizado aqui com proxima acao clara.</p>
+          <div className="inline-flex items-center gap-2 text-[11px] font-black uppercase tracking-widest text-indigo-300">
+            <Sparkles className="h-4 w-4" /> Content Machine
+          </div>
+          <h1 className="mt-2 text-3xl font-bold text-white">Content Board</h1>
+          <p className="mt-1 text-sm text-slate-500">Para revisar, aprovado e agendado.</p>
         </div>
-      </header>
-
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-        <QueueMetric label="Na fila" value={queuedCount} detail="Gerado e esperando revisao humana." />
-        <QueueMetric label="Em revisao" value={reviewingCount} detail="Ja aberto ou assumido por alguem." />
-        <QueueMetric label="Aprovados" value={approvedCount} detail="Prontos para export, publicacao ou entrega." />
-      </div>
-
-      <div className="premium-card p-5 grid grid-cols-1 gap-4 md:grid-cols-4">
-        <div className="space-y-2">
-          <label className="premium-label">Projeto</label>
-          <select value={projectFilter} onChange={(event) => setProjectFilter(event.target.value)} className="premium-input w-full appearance-none">
-            <option value="all">Todos</option>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <select value={projectFilter} onChange={(event) => setProjectFilter(event.target.value)} className="premium-input min-w-[220px] appearance-none">
+            <option value="all">Todos os experts</option>
             {projects.map((project) => (
               <option key={project.id} value={project.id}>{project.name}</option>
             ))}
           </select>
+          <Link to="/create" className="premium-button-primary inline-flex items-center justify-center gap-2">
+            Criar conteudo <ArrowRight className="h-4 w-4" />
+          </Link>
         </div>
-        <div className="space-y-2">
-          <label className="premium-label">Estado</label>
-          <select value={stateFilter} onChange={(event) => setStateFilter(event.target.value as FilterState)} className="premium-input w-full appearance-none">
-            <option value="all">Todos</option>
-            <option value="queued">Na fila</option>
-            <option value="reviewing">Em revisao</option>
-            <option value="approved">Aprovado</option>
-            <option value="needs_regeneration">Pedir nova versao</option>
-            <option value="rejected">Descartado</option>
-          </select>
-        </div>
-        <div className="space-y-2">
-          <label className="premium-label">Origem</label>
-          <select value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value as FilterSource)} className="premium-input w-full appearance-none">
-            <option value="all">Todas</option>
-            <option value="automation">Automacao</option>
-            <option value="weekly_plan">Planning semanal</option>
-            <option value="manual">Manual</option>
-          </select>
-        </div>
-        <div className="space-y-2">
-          <label className="premium-label">Ordem</label>
-          <select value={order} onChange={(event) => setOrder(event.target.value as 'newest' | 'oldest')} className="premium-input w-full appearance-none">
-            <option value="newest">Mais recentes</option>
-            <option value="oldest">Mais antigos</option>
-          </select>
-        </div>
+      </header>
+
+      {notice && <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4 text-sm text-emerald-200">{notice}</div>}
+
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+        {columns.map((column) => {
+          const items = boardItems.filter((item) => item.status === column.id);
+          return (
+            <section key={column.id} className="min-h-[520px] rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div>
+                  <h2 className="font-bold text-white">{column.label}</h2>
+                  <p className="mt-1 text-sm text-slate-500">{column.detail}</p>
+                </div>
+                <span className="rounded-full bg-white/[0.06] px-2.5 py-1 text-xs font-black text-slate-300">{items.length}</span>
+              </div>
+
+              <div className="space-y-3">
+                {items.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-white/10 p-6 text-center text-sm text-slate-600">
+                    Sem cards aqui.
+                  </div>
+                ) : items.map((item) => (
+                  <BoardCard
+                    key={item.id}
+                    item={item}
+                    acting={actingId === item.id}
+                    project={item.kind === 'content'
+                      ? item.draft.project || projectMap.get(item.draft.project_id)
+                      : item.slideshow.automation?.project || projectMap.get(getSlideshowProjectId(item.slideshow))}
+                    scheduleValue={scheduleInputs[item.id] || ''}
+                    onScheduleChange={(value) => setScheduleInputs((prev) => ({ ...prev, [item.id]: value }))}
+                    onCopy={() => copyItem(item)}
+                    onApprove={() => item.kind === 'content'
+                      ? moveContentDraft(item.draft, 'approved')
+                      : moveCarousel(item.slideshow, 'approved')}
+                    onSchedule={() => item.kind === 'content'
+                      ? moveContentDraft(item.draft, 'scheduled')
+                      : moveCarousel(item.slideshow, 'scheduled')}
+                    onBack={() => item.kind === 'content'
+                      ? moveContentDraft(item.draft, item.status === 'scheduled' ? 'approved' : 'review')
+                      : moveCarousel(item.slideshow, item.status === 'scheduled' ? 'approved' : 'review')}
+                    onRequestNewVersion={() => item.kind === 'content'
+                      ? undefined
+                      : requestNewCarouselVersion(item.slideshow)}
+                  />
+                ))}
+              </div>
+            </section>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function BoardCard({
+  item,
+  acting,
+  project,
+  scheduleValue,
+  onScheduleChange,
+  onCopy,
+  onApprove,
+  onSchedule,
+  onBack,
+  onRequestNewVersion,
+}: {
+  item: BoardItem;
+  acting: boolean;
+  project?: Project;
+  scheduleValue: string;
+  onScheduleChange: (value: string) => void;
+  onCopy: () => void;
+  onApprove: () => void;
+  onSchedule: () => void;
+  onBack: () => void;
+  onRequestNewVersion: () => void;
+}) {
+  const isContent = item.kind === 'content';
+  const title = isContent
+    ? item.draft.title || item.draft.hook
+    : item.slideshow.slides?.[0]?.title || item.slideshow.slides?.[0]?.text || 'Carrossel';
+  const detail = isContent
+    ? item.draft.format === 'x_thread'
+      ? item.draft.thread_items[0] || item.draft.hook
+      : item.draft.body
+    : item.slideshow.caption || item.slideshow.content_angle || '';
+  const editUrl = isContent ? `/content/${item.draft.id}` : `/editor/${item.slideshow.id}`;
+  const formatLabel = isContent
+    ? item.draft.format === 'x_thread' ? 'Thread para X' : 'Post para X'
+    : 'Carrossel';
+  const Icon = isContent ? FileText : Film;
+
+  return (
+    <article className="rounded-2xl border border-white/10 bg-[#111] p-4 shadow-xl shadow-black/10">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <span className="inline-flex items-center gap-2 rounded-full bg-white/[0.04] px-3 py-1 text-[11px] font-black uppercase tracking-widest text-slate-300">
+          <Icon className="h-3.5 w-3.5" /> {formatLabel}
+        </span>
+        {item.status === 'scheduled' && (
+          <span className="rounded-full bg-emerald-500/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-200">
+            Agendado
+          </span>
+        )}
       </div>
 
-      {filteredSlideshows.length === 0 ? (
-        <div className="premium-card p-12 text-center">
-          <p className="text-lg font-bold text-white">Nenhum draft nesta visao</p>
-          <p className="text-slate-500 mt-2">A fila ganha vida quando as automacoes geram novos carrosseis ou quando voce cria drafts manuais.</p>
+      <h3 className="text-base font-bold leading-tight text-white">{title}</h3>
+      <p className="mt-2 line-clamp-4 text-sm leading-relaxed text-slate-400">{detail || 'Sem texto salvo.'}</p>
+
+      <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
+        <Fact label="Expert" value={project?.name || 'Sem expert'} />
+        <Fact label="Criado" value={new Date(getItemDate(item)).toLocaleDateString('pt-BR')} />
+      </div>
+
+      <div className="mt-4 space-y-2">
+        <input
+          type="datetime-local"
+          value={scheduleValue}
+          onChange={(event) => onScheduleChange(event.target.value)}
+          className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-xs text-white focus:border-indigo-500 focus:outline-none"
+        />
+        <div className="flex flex-wrap gap-2">
+          <Link to={editUrl} className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-xs font-bold text-white transition hover:bg-white/[0.06]">
+            Editar
+          </Link>
+          <button onClick={onCopy} className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-xs font-bold text-white transition hover:bg-white/[0.06]">
+            <Copy className="mr-1 inline h-3.5 w-3.5" /> Copiar
+          </button>
+          {item.status === 'review' && (
+            <button onClick={onApprove} disabled={acting} className="rounded-xl bg-indigo-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-indigo-500 disabled:opacity-50">
+              {acting ? <Loader2 className="inline h-3.5 w-3.5 animate-spin" /> : <Check className="mr-1 inline h-3.5 w-3.5" />} Aprovar
+            </button>
+          )}
+          {item.status !== 'scheduled' && (
+            <button onClick={onSchedule} disabled={acting || !scheduleValue} className="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-emerald-500 disabled:opacity-50">
+              <CalendarClock className="mr-1 inline h-3.5 w-3.5" /> Agendar
+            </button>
+          )}
+          {item.status !== 'review' && (
+            <button onClick={onBack} disabled={acting} className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-xs font-bold text-slate-300 transition hover:bg-white/[0.06] disabled:opacity-50">
+              Voltar
+            </button>
+          )}
+          {item.kind === 'content' ? (
+            <Link to={editUrl} className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs font-bold text-amber-100 transition hover:bg-amber-500/20">
+              <RefreshCw className="mr-1 inline h-3.5 w-3.5" /> Nova versao
+            </Link>
+          ) : (
+            <button onClick={onRequestNewVersion} disabled={acting} className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs font-bold text-amber-100 transition hover:bg-amber-500/20 disabled:opacity-50">
+              <RefreshCw className="mr-1 inline h-3.5 w-3.5" /> Nova versao
+            </button>
+          )}
         </div>
-      ) : (
-        <div className="space-y-4">
-          {filteredSlideshows.map((slideshow) => {
-            const project = projectMap.get(getSlideshowProjectId(slideshow)) || slideshow.automation?.project;
-            const promise = slideshow.hook?.text || slideshow.slides?.[0]?.title || slideshow.slides?.[0]?.text || 'Draft sem promessa definida';
-            const queueLabel = getQueueLabelText(slideshow.queue_label);
-            const reviewState = getReviewStateLabel(slideshow.review_state);
-            const sourceCapture = getSourceCaptureSummary(slideshow);
-            const transcript = getTranscriptSummary(slideshow);
-            const isActing = actingId === slideshow.id;
-
-            return (
-              <div key={slideshow.id} className="premium-card p-5 space-y-4">
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                  <div className="space-y-3">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="rounded-full bg-indigo-500/10 px-3 py-1 text-[11px] font-black uppercase tracking-widest text-indigo-200">
-                        {reviewState}
-                      </span>
-                      <span className="rounded-full bg-white/[0.04] px-3 py-1 text-[11px] font-black uppercase tracking-widest text-slate-300">
-                        {queueLabel}
-                      </span>
-                      {slideshow.generated_by && (
-                        <span className="rounded-full bg-white/[0.04] px-3 py-1 text-[11px] font-black uppercase tracking-widest text-slate-400">
-                          {slideshow.generated_by === 'automation' ? 'Automacao' : slideshow.generated_by === 'weekly_plan' ? 'Planning' : 'Manual'}
-                        </span>
-                      )}
-                      <span className={`rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-widest ${
-                        sourceCapture.failed
-                          ? 'bg-red-500/10 text-red-200'
-                          : sourceCapture.isFallback
-                            ? 'bg-amber-500/10 text-amber-100'
-                            : 'bg-emerald-500/10 text-emerald-200'
-                      }`}>
-                        {sourceCapture.typeLabel}
-                      </span>
-                      <span className={`rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-widest ${
-                        transcript.source === 'official'
-                          ? 'bg-emerald-500/10 text-emerald-200'
-                          : transcript.source === 'auto'
-                            ? 'bg-sky-500/10 text-sky-200'
-                            : 'bg-amber-500/10 text-amber-100'
-                      }`}>
-                        {transcript.sourceLabel}
-                      </span>
-                    </div>
-                    <div>
-                      <h2 className="text-xl font-bold text-white leading-tight">{promise}</h2>
-                      <p className="text-sm text-slate-400 mt-2 leading-relaxed">{slideshow.queue_note || 'Sem observacao de fila.'}</p>
-                      <p className="text-xs text-slate-500 mt-2">{sourceCapture.note}</p>
-                      <p className="text-xs text-slate-500 mt-1">{transcript.note}{transcript.language ? ` Idioma: ${transcript.language}.` : ''}</p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3 text-sm lg:min-w-[260px]">
-                    <QueueFact label="Projeto" value={project?.name || 'Sem projeto'} />
-                    <QueueFact label="Sistema" value={slideshow.automation?.name || 'Manual'} />
-                    <QueueFact label="Readiness" value={`${slideshow.readiness_score || 0}/100`} />
-                    <QueueFact label="Imagem" value={sourceCapture.statusLabel} />
-                    <QueueFact label="Transcript" value={transcript.statusLabel} />
-                    <QueueFact label="Criado em" value={new Date(slideshow.created_at).toLocaleDateString('pt-BR')} />
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap gap-3">
-                  <button
-                    onClick={() => updateReviewState(slideshow.id, 'reviewing')}
-                    disabled={isActing}
-                    className="premium-button-secondary text-sm"
-                  >
-                    {isActing ? 'Atualizando...' : 'Assumir revisao'}
-                  </button>
-                  <button
-                    onClick={() => updateReviewState(slideshow.id, 'approved')}
-                    disabled={isActing}
-                    className="premium-button-primary text-sm flex items-center gap-2"
-                  >
-                    {isActing ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-                    Aprovar
-                  </button>
-                  <button
-                    onClick={() => regenerateDraft(slideshow)}
-                    disabled={isActing}
-                    className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-2 text-sm font-bold text-amber-100 hover:bg-amber-500/20 transition-colors flex items-center gap-2"
-                  >
-                    {isActing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-                    Nova versao
-                  </button>
-                  <Link to={`/editor/${slideshow.id}`} className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2 text-sm font-bold text-white hover:bg-white/[0.06] transition-colors flex items-center gap-2">
-                    Abrir editor <ArrowRight className="w-4 h-4" />
-                  </Link>
-                  <button
-                    onClick={() => updateReviewState(slideshow.id, 'rejected')}
-                    disabled={isActing}
-                    className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-2 text-sm font-bold text-red-200 hover:bg-red-500/20 transition-colors flex items-center gap-2"
-                  >
-                    <XCircle className="w-4 h-4" />
-                    Descartar
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
+      </div>
+    </article>
   );
 }
 
-function QueueMetric({ label, value, detail }: { label: string; value: number; detail: string }) {
+function Fact({ label, value }: { label: string; value: string }) {
   return (
-    <div className="premium-card p-5">
-      <p className="text-xs font-black uppercase tracking-widest text-slate-500">{label}</p>
-      <p className="mt-3 text-4xl font-bold text-white font-space tracking-tighter">{value}</p>
-      <p className="mt-2 text-sm text-slate-500 leading-relaxed">{detail}</p>
-    </div>
-  );
-}
-
-function QueueFact({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-2xl border border-white/5 bg-white/[0.03] p-3">
+    <div className="rounded-xl border border-white/5 bg-white/[0.03] p-2">
       <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{label}</p>
-      <p className="mt-2 text-sm font-bold text-white leading-snug">{value}</p>
+      <p className="mt-1 truncate text-xs font-bold text-slate-200">{value}</p>
     </div>
   );
 }

@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowRight, Check, FileText, Link2, Loader2, RefreshCw, Rss, Sparkles, Target, Wand2, Youtube } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import type { ContentBrief, ContentStrategy, Project } from '../lib/types';
+import type { ContentBrief, ContentStrategy, Project, XContentDraftResult } from '../lib/types';
 import * as db from '../lib/database';
 import { carouselTemplates, getCarouselTemplate } from '../lib/carouselTemplates';
 import { defaultColorPaletteId, defaultFontPresetId, getCarouselColorPalette } from '../lib/carouselVisuals';
 import { expertContentPresets, getExpertContentPreset } from '../lib/contentPresets';
-import { generateContentStrategy, generateSourceCarouselStrategy } from '../services/geminiService';
+import { generateContentStrategy, generateSourceCarouselStrategy, generateXContentDraft } from '../services/geminiService';
 import { fetchRssSource, fetchYouTubeSource, getYouTubeThumbnail, getYouTubeThumbnailCandidates, resolveSourceImage, type SourcePreview } from '../services/sourceService';
 import { assessQueueState } from '../lib/queueUtils';
 import { getSourceCaptureStatusLabel, getSourceCaptureTypeLabel, pickResolvedSourceImageUrl } from '../lib/sourceCapture';
@@ -14,6 +14,7 @@ import { getTranscriptSourceLabel, getTranscriptStatusLabel } from '../lib/sourc
 
 const inputCls = 'w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500';
 type SourceType = NonNullable<ContentBrief['source_type']>;
+type ContentFormat = 'carousel' | 'x_post' | 'x_thread';
 
 const angleSuggestions = {
   manual: [
@@ -52,7 +53,9 @@ export default function CreateContent() {
   const [showRefinement, setShowRefinement] = useState(false);
   const [error, setError] = useState('');
   const [sourceError, setSourceError] = useState('');
+  const [contentFormat, setContentFormat] = useState<ContentFormat>('carousel');
   const [strategy, setStrategy] = useState<ContentStrategy | null>(null);
+  const [xDraft, setXDraft] = useState<XContentDraftResult | null>(null);
   const [sourcePreview, setSourcePreview] = useState<SourcePreview | null>(null);
 
   const [brief, setBrief] = useState<ContentBrief>({
@@ -114,6 +117,7 @@ export default function CreateContent() {
   const sourceTranscriptStatus = brief.source_transcript_status;
   const sourceTranscriptNote = brief.source_transcript_note ?? '';
   const isSourceFlow = sourceType === 'youtube' || sourceType === 'rss';
+  const isXFormat = contentFormat === 'x_post' || contentFormat === 'x_thread';
   const selectedAngleSuggestions = angleSuggestions[sourceType];
   const selectedSourceTemplate = sourceNoteTemplates[sourceType];
   const angleReady = brief.topic.trim().length > 0;
@@ -161,7 +165,9 @@ export default function CreateContent() {
   }, [brief.topic, sourceExcerpt, sourceNotes, sourceType, sourceUrl]);
 
   const canGenerate = sourceStatus.ready && angleReady;
-  const generateHint = !sourceStatus.ready
+  const generateHint = isXFormat && !brief.project_id
+    ? 'Escolha um expert para usar tom de voz, Brand DNA e aprendizado.'
+    : !sourceStatus.ready
     ? sourceStatus.detail
     : !angleReady
       ? 'Defina o angulo desejado para a IA transformar a fonte em tese e narrativa.'
@@ -209,6 +215,7 @@ export default function CreateContent() {
       return { ...prev, [field]: value };
     });
     setStrategy(null);
+    setXDraft(null);
     if (field === 'source_type' || field === 'source_url') setSourcePreview(null);
     if (field === 'source_type' || field === 'source_url' || field === 'source_notes') setSourceError('');
   }
@@ -222,6 +229,7 @@ export default function CreateContent() {
       cta: preset.defaultCta,
     }));
     setStrategy(null);
+    setXDraft(null);
   }
 
   function chooseSourceType(sourceType: ContentBrief['source_type']) {
@@ -276,6 +284,7 @@ export default function CreateContent() {
     }));
     setSourcePreview(null);
     setStrategy(null);
+    setXDraft(null);
     setError('');
     setSourceError('');
   }
@@ -290,6 +299,7 @@ export default function CreateContent() {
     setError('');
     setSourceError('');
     setStrategy(null);
+    setXDraft(null);
     try {
       if (sourceType === 'youtube') {
         const youtubeSource = await fetchYouTubeSource(sourceUrl);
@@ -409,6 +419,31 @@ export default function CreateContent() {
     setGenerating(true);
     setError('');
     try {
+      if (isXFormat) {
+        if (!brief.project_id) {
+          setError('Escolha um expert antes de gerar posts para X.');
+          return;
+        }
+        const result = await generateXContentDraft({
+          format: contentFormat,
+          topic: preparedBrief.topic || preparedBrief.source_title || 'Post para X',
+          goal: preparedBrief.goal,
+          audience: preparedBrief.audience,
+          sourceNotes: [
+            preparedBrief.source_title ? `Fonte: ${preparedBrief.source_title}` : '',
+            preparedBrief.source_url ? `URL: ${preparedBrief.source_url}` : '',
+            preparedBrief.source_excerpt || '',
+            preparedBrief.source_notes || '',
+          ].filter(Boolean).join('\n\n'),
+          brandDNA: selectedProject?.brand_dna,
+          knowledgeBase: selectedProject?.knowledge_base,
+          voiceLearningNotes: selectedProject?.voice_learning_notes,
+        });
+        setXDraft(result);
+        setStrategy(null);
+        return;
+      }
+
       const result = isSourceFlow
         ? await generateSourceCarouselStrategy({
             brief: preparedBrief,
@@ -421,6 +456,7 @@ export default function CreateContent() {
             knowledgeBase: selectedProject?.knowledge_base,
           });
       setStrategy(result);
+      setXDraft(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Nao consegui gerar a estrategia agora. Tente novamente.');
     } finally {
@@ -483,15 +519,44 @@ export default function CreateContent() {
     }
   }
 
+  async function handleCreateContentDraft() {
+    if (!xDraft || !brief.project_id || !isXFormat) return;
+    setSaving(true);
+    setError('');
+    try {
+      const draft = await db.createContentDraft({
+        project_id: brief.project_id,
+        format: contentFormat,
+        status: 'review',
+        scheduled_for: null,
+        title: xDraft.title,
+        topic: brief.topic || sourceTitle || xDraft.title,
+        body: xDraft.body,
+        thread_items: xDraft.thread_items,
+        source_notes: sourceNotes || sourceExcerpt || '',
+        voice_notes_used: xDraft.voice_notes_used || selectedProject?.voice_learning_notes || '',
+        objective: xDraft.objective,
+        hook: xDraft.hook,
+        variants: xDraft.variants,
+      });
+      navigate(`/content/${draft.id}`);
+    } catch (err) {
+      console.error(err);
+      setError('Nao consegui salvar o draft para X. Tente novamente.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <div className="space-y-8 py-4">
       <header className="flex flex-col gap-3 max-w-3xl">
         <div className="inline-flex items-center gap-2 text-[11px] font-black uppercase tracking-widest text-indigo-300">
           <Sparkles className="w-4 h-4" /> Sistema de conteudo para experts
         </div>
-        <h1 className="text-4xl font-bold text-white tracking-tight">Criar carrossel pronto para publicar</h1>
+        <h1 className="text-4xl font-bold text-white tracking-tight">Criar conteudo pronto para revisar</h1>
         <p className="text-slate-400 text-lg leading-relaxed">
-          Transforme uma ideia, tese ou bastidor em estrategia, roteiro e visual premium antes de abrir o editor.
+          Transforme uma ideia, tese ou bastidor em carrossel, post ou thread com voz de expert.
         </p>
       </header>
 
@@ -533,10 +598,36 @@ export default function CreateContent() {
               <p className="premium-label">Resumo rapido</p>
               <div className="mt-3 flex flex-wrap gap-2">
                 <SummaryChip label={selectedProject?.name || 'Sem projeto'} tone={selectedProject ? 'filled' : 'muted'} />
+                <SummaryChip label={contentFormat === 'carousel' ? 'Carrossel' : contentFormat === 'x_post' ? 'Post para X' : 'Thread para X'} tone="filled" />
                 <SummaryChip label={selectedPreset.label} />
                 <SummaryChip label={sourceType === 'manual' ? 'Ideia manual' : sourceType === 'youtube' ? 'Fonte: YouTube' : 'Fonte: RSS / Portal'} />
                 <SummaryChip label={angleReady ? 'Angulo definido' : 'Falta angulo'} tone={angleReady ? 'filled' : 'muted'} />
-                <SummaryChip label={selectedTemplate.name} />
+                {!isXFormat && <SummaryChip label={selectedTemplate.name} />}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-4 space-y-3">
+              <p className="premium-label">Formato</p>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                {[
+                  { id: 'carousel' as const, title: 'Carrossel', description: 'Draft visual para Instagram.' },
+                  { id: 'x_post' as const, title: 'Post para X', description: 'Texto curto, forte e copiavel.' },
+                  { id: 'x_thread' as const, title: 'Thread para X', description: 'Sequencia de ideias para autoridade.' },
+                ].map((format) => (
+                  <button
+                    key={format.id}
+                    type="button"
+                    onClick={() => {
+                      setContentFormat(format.id);
+                      setStrategy(null);
+                      setXDraft(null);
+                    }}
+                    className={`rounded-2xl border p-4 text-left transition-all ${contentFormat === format.id ? 'border-indigo-400 bg-indigo-500/10' : 'border-white/10 bg-white/[0.02] hover:bg-white/[0.04]'}`}
+                  >
+                    <p className="text-sm font-bold text-white">{format.title}</p>
+                    <p className="mt-2 text-sm leading-relaxed text-slate-500">{format.description}</p>
+                  </button>
+                ))}
               </div>
             </div>
 
@@ -846,6 +937,7 @@ export default function CreateContent() {
             </div>
           </div>
 
+          {!isXFormat && (
           <div className="premium-card p-6 space-y-4">
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -909,6 +1001,7 @@ export default function CreateContent() {
               </div>
             )}
           </div>
+          )}
 
           {error && (
             <div className="border border-red-500/20 bg-red-500/10 text-red-200 rounded-2xl p-4 text-sm">
@@ -921,11 +1014,11 @@ export default function CreateContent() {
               <p className={`text-sm ${canGenerate ? 'text-emerald-300' : 'text-amber-200'}`}>{generateHint}</p>
               <button
                 onClick={handleGenerate}
-                disabled={generating || saving || !canGenerate}
+                disabled={generating || saving || !canGenerate || (isXFormat && !brief.project_id)}
                 className="premium-button-primary flex items-center gap-3 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {generating ? <Loader2 className="w-5 h-5 animate-spin" /> : strategy ? <RefreshCw className="w-5 h-5" /> : <Wand2 className="w-5 h-5" />}
-                {generating ? 'Gerando estrategia...' : strategy ? 'Regenerar estrategia' : 'Gerar estrategia'}
+                {generating ? <Loader2 className="w-5 h-5 animate-spin" /> : (strategy || xDraft) ? <RefreshCw className="w-5 h-5" /> : <Wand2 className="w-5 h-5" />}
+                {generating ? 'Gerando draft...' : (strategy || xDraft) ? 'Regenerar draft' : 'Gerar draft'}
               </button>
             </div>
           </div>
@@ -939,7 +1032,7 @@ export default function CreateContent() {
                   <p className="premium-label">Preset</p>
                   <h3 className="text-xl font-bold text-white">{selectedPreset.label}</h3>
                 </div>
-                <span className="text-[10px] font-black uppercase tracking-widest text-indigo-300">{selectedTemplate.badge}</span>
+                <span className="text-[10px] font-black uppercase tracking-widest text-indigo-300">{isXFormat ? 'X' : selectedTemplate.badge}</span>
               </div>
               <p className="text-sm text-slate-400 leading-relaxed">{selectedPreset.description}</p>
               {selectedProject?.brand_dna?.core_promise && (
@@ -961,7 +1054,7 @@ export default function CreateContent() {
                 )}
               </div>
 
-              {!strategy ? (
+              {!strategy && !xDraft ? (
                 <div className="p-5 space-y-5">
                   <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
                     <div className="flex items-center justify-between gap-3">
@@ -973,7 +1066,7 @@ export default function CreateContent() {
                     <PreviewRow label="Fonte" value={sourceType === 'manual' ? 'Ideia manual' : sourceType === 'youtube' ? 'YouTube' : 'RSS / Portal'} />
                     <PreviewRow label="Proximo passo" value={sourceStatus.detail} />
                     <PreviewRow label="Angulo" value={brief.topic || 'Defina a leitura que queremos tirar dessa fonte.'} />
-                    <PreviewRow label="Template" value={selectedTemplate.name} />
+                    <PreviewRow label="Formato" value={contentFormat === 'carousel' ? selectedTemplate.name : contentFormat === 'x_post' ? 'Post para X' : 'Thread para X'} />
                   </div>
 
                   <div className="rounded-2xl border border-white/10 bg-black/20 p-4 space-y-3">
@@ -1004,7 +1097,51 @@ export default function CreateContent() {
                     <p className="text-sm">{generateHint}</p>
                   </div>
                 </div>
-              ) : (
+              ) : isXFormat && xDraft ? (
+                <div className="p-5 space-y-5">
+                  <div className="rounded-2xl border border-white/10 bg-black/30 p-5 space-y-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="premium-label">{contentFormat === 'x_thread' ? 'Thread para X' : 'Post para X'}</p>
+                      <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-[11px] font-black uppercase tracking-widest text-emerald-200">
+                        Para revisar
+                      </span>
+                    </div>
+                    <h3 className="text-xl font-bold leading-tight text-white">{xDraft.title}</h3>
+                    {contentFormat === 'x_thread' ? (
+                      <div className="space-y-3">
+                        {xDraft.thread_items.map((item, index) => (
+                          <div key={`${item}-${index}`} className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Post {index + 1}</p>
+                            <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-200">{item}</p>
+                            <p className="mt-2 text-xs text-slate-500">{item.length}/280</p>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+                        <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-200">{xDraft.body}</p>
+                        <p className="mt-3 text-xs text-slate-500">{xDraft.body.length}/280</p>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-3">
+                    <PreviewRow label="Hook" value={xDraft.hook} />
+                    <PreviewRow label="Objetivo" value={xDraft.objective || 'Posicionar o expert com uma ideia forte.'} />
+                    <PreviewRow label="Voz aplicada" value={xDraft.voice_notes_used || 'Brand DNA do expert.'} />
+                  </div>
+
+                  <button
+                    onClick={handleCreateContentDraft}
+                    disabled={saving}
+                    className="premium-button-primary w-full flex items-center justify-center gap-3"
+                  >
+                    {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Check className="w-5 h-5" />}
+                    {saving ? 'Criando draft...' : 'Enviar para Content Board'}
+                    {!saving && <ArrowRight className="w-5 h-5" />}
+                  </button>
+                </div>
+              ) : strategy ? (
                 <div className="p-5 space-y-5">
                   <div className="aspect-[4/5] rounded-2xl p-7 flex flex-col justify-between shadow-2xl" style={{ background: selectedTemplate.gradient, color: selectedTemplate.textColor }}>
                     <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-widest" style={{ color: selectedTemplate.accentColor }}>
@@ -1046,7 +1183,7 @@ export default function CreateContent() {
                     {!saving && <ArrowRight className="w-5 h-5" />}
                   </button>
                 </div>
-              )}
+              ) : null}
             </div>
           </div>
         </aside>

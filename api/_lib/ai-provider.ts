@@ -1,5 +1,13 @@
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || '';
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || process.env.VITE_OPENROUTER_API_KEY || '';
+function readEnvKey(...keys: string[]) {
+  for (const key of keys) {
+    const value = (process.env[key] || '').trim().replace(/^["']|["']$/g, '');
+    if (value) return value;
+  }
+  return '';
+}
+
+const GEMINI_API_KEY = readEnvKey('GEMINI_API_KEY', 'VITE_GEMINI_API_KEY');
+const OPENROUTER_API_KEY = readEnvKey('OPENROUTER_API_KEY', 'VITE_OPENROUTER_API_KEY');
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 const AI_TIMEOUT_MS = 45000;
 
@@ -53,8 +61,12 @@ export async function generateAiText(prompt: string) {
     providerErrors.push('Gemini key is not configured');
   }
 
+  if (!OPENROUTER_API_KEY && !GEMINI_API_KEY) {
+    throw new Error(`IA nao configurada neste ambiente. Configure GEMINI_API_KEY, VITE_GEMINI_API_KEY, OPENROUTER_API_KEY ou VITE_OPENROUTER_API_KEY para gerar conteudos. ${providerErrors.join(' | ')}`);
+  }
+
   if (!OPENROUTER_API_KEY) {
-    throw new Error(`IA nao configurada neste ambiente. Configure GEMINI_API_KEY, VITE_GEMINI_API_KEY, OPENROUTER_API_KEY ou VITE_OPENROUTER_API_KEY para gerar carrosseis. ${providerErrors.join(' | ')}`);
+    throw new Error(providerErrors.join(' | ') || 'Nenhum provedor de IA retornou conteudo.');
   }
 
   try {

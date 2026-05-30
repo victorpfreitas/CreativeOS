@@ -2,7 +2,16 @@
 // Made by Human — AI Service
 // ============================================================
 
-import type { BrandDNA, ContentAnalysis, ContentBrief, ContentPlanItem, ContentStrategy, Slide } from '../lib/types';
+import type {
+  BrandDNA,
+  ContentAnalysis,
+  ContentBrief,
+  ContentDraft,
+  ContentPlanItem,
+  ContentStrategy,
+  Slide,
+  XContentDraftResult,
+} from '../lib/types';
 import { getExpertContentPreset } from '../lib/contentPresets';
 
 async function callAI(prompt: string): Promise<string> {
@@ -62,6 +71,12 @@ function compactText(value?: string): string {
     .replace(/[ \t]+\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+}
+
+function limitText(value: string | undefined, max: number): string {
+  const text = compactText(value);
+  if (text.length <= max) return text;
+  return `${text.slice(0, Math.max(0, max - 1)).trim()}…`;
 }
 
 function composeSlideText(slide: Pick<Slide, 'tagline' | 'title' | 'body' | 'cta' | 'text'>) {
@@ -149,6 +164,144 @@ export function compileBrandDNA(dna: BrandDNA): string {
   if (dna.proof_points) parts.push(`Provas e credenciais: ${dna.proof_points}`);
   if (dna.content_angles) parts.push(`Ângulos recorrentes: ${dna.content_angles}`);
   return parts.join('\n');
+}
+
+// ---- Generate X Content Draft ----
+
+export async function generateXContentDraft(params: {
+  format: ContentDraft['format'];
+  topic: string;
+  goal?: string;
+  audience?: string;
+  sourceNotes?: string;
+  brandDNA?: BrandDNA;
+  knowledgeBase?: string;
+  voiceLearningNotes?: string;
+  refinementInstruction?: string;
+  currentDraft?: Pick<ContentDraft, 'body' | 'thread_items' | 'hook' | 'objective'>;
+}): Promise<XContentDraftResult> {
+  const {
+    format,
+    topic,
+    goal,
+    audience,
+    sourceNotes,
+    brandDNA,
+    knowledgeBase,
+    voiceLearningNotes,
+    refinementInstruction,
+    currentDraft,
+  } = params;
+  const brandContext = brandDNA ? compileBrandDNA(brandDNA) : knowledgeBase;
+  const isThread = format === 'x_thread';
+  const currentText = currentDraft
+    ? [
+        currentDraft.hook ? `Hook atual: ${currentDraft.hook}` : '',
+        currentDraft.body ? `Post atual:\n${currentDraft.body}` : '',
+        currentDraft.thread_items?.length ? `Thread atual:\n${currentDraft.thread_items.map((item, index) => `${index + 1}. ${item}`).join('\n\n')}` : '',
+        currentDraft.objective ? `Objetivo atual: ${currentDraft.objective}` : '',
+      ].filter(Boolean).join('\n\n')
+    : '';
+
+  const prompt = `You are an elite ghostwriter for X/Twitter, writing for high-trust experts who want authority, reach, and a recognizable voice.
+
+Create one ${isThread ? 'X thread' : 'X post'} in pt-BR.
+
+Topic:
+${topic || 'Autoridade e posicionamento do expert'}
+
+Goal:
+${goal || 'Posicionar o expert como autoridade e gerar conversas qualificadas.'}
+
+Audience:
+${audience || 'Seguidores e potenciais clientes do expert.'}
+
+Source notes:
+${sourceNotes || 'Not provided'}
+
+${brandContext ? `Expert Brand DNA:\n${brandContext}\n` : ''}
+${voiceLearningNotes ? `Learned voice notes from previous human edits:\n${voiceLearningNotes}\n` : ''}
+${currentText ? `Current draft to improve:\n${currentText}\n` : ''}
+${refinementInstruction ? `Refinement instruction:\n${refinementInstruction}\n` : ''}
+
+Rules:
+- Write with authority, specificity, and a strong point of view.
+- Sound like a real expert, not generic marketing copy.
+- Avoid empty hype, engagement bait, fake certainty, and motivational filler.
+- Use short paragraphs and natural rhythm for X.
+- For a single post, body must be at most 270 characters.
+- For a thread, create 4 to 7 items; each item must be at most 270 characters.
+- Do not number thread items inside the item text.
+- Include 3 short alternative hooks/variations.
+- voice_notes_used must summarize which voice rules you applied.
+
+Return ONLY a valid JSON object with this exact structure:
+{
+  "title": "short internal title",
+  "hook": "the strongest opening line",
+  "body": "single post body, or empty string for thread",
+  "thread_items": ["thread post 1", "thread post 2"],
+  "objective": "why this draft should exist strategically",
+  "variants": ["variation 1", "variation 2", "variation 3"],
+  "voice_notes_used": "short description of voice signals used"
+}`;
+
+  const text = await callAI(prompt);
+  const result = parseAIJson<XContentDraftResult>(text, 'post para X');
+  const threadItems = Array.isArray(result.thread_items)
+    ? result.thread_items.map((item) => limitText(item, 270)).filter(Boolean).slice(0, 7)
+    : [];
+  const body = isThread ? '' : limitText(result.body || result.hook, 270);
+  const normalizedThreadItems = isThread
+    ? (threadItems.length > 0 ? threadItems : [limitText(result.hook || result.body, 270)].filter(Boolean))
+    : [];
+
+  return {
+    title: limitText(result.title || topic || result.hook || 'Draft para X', 90),
+    hook: limitText(result.hook || body || normalizedThreadItems[0] || topic, 270),
+    body,
+    thread_items: normalizedThreadItems,
+    objective: compactText(result.objective),
+    variants: Array.isArray(result.variants) ? result.variants.map((item) => limitText(item, 270)).filter(Boolean).slice(0, 3) : [],
+    voice_notes_used: compactText(result.voice_notes_used || voiceLearningNotes || ''),
+  };
+}
+
+export async function generateVoiceLearningNotes(params: {
+  existingNotes?: string;
+  eventType: 'approved' | 'edited' | 'regenerated' | 'scheduled';
+  beforeText?: string;
+  afterText?: string;
+  instruction?: string;
+}): Promise<string> {
+  const { existingNotes, eventType, beforeText, afterText, instruction } = params;
+  const prompt = `You maintain concise writing-style memory for a creator's Content Machine.
+
+Update the voice learning notes based on this human action.
+
+Existing notes:
+${existingNotes || 'No notes yet.'}
+
+Event type: ${eventType}
+Instruction: ${instruction || 'None'}
+
+Before:
+${beforeText || 'Not provided'}
+
+After:
+${afterText || 'Not provided'}
+
+Rules:
+- Write in pt-BR.
+- Keep it under 900 characters.
+- Preserve durable voice/style preferences only.
+- Focus on what future drafts should do more or avoid.
+- Do not mention this event as a log; write reusable instructions.
+
+Return ONLY the updated notes as plain text.`;
+
+  const text = await callAI(prompt);
+  return limitText(text, 900);
 }
 
 // ---- Generate Expert Content Strategy ----

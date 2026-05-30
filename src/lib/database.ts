@@ -11,7 +11,7 @@ import type {
   Project, Automation, Hook, Slideshow,
   ImageCollection, CollectionImage,
   CreateProjectInput, CreateAutomationInput, CreateCollectionInput,
-  Slide, ContentAnalysis, ContentPlan, ContentBrief,
+  Slide, ContentAnalysis, ContentPlan, ContentBrief, ContentDraft, CreateContentDraftInput, VoiceLearningEvent,
 } from './types';
 
 type CreateSlideshowInput = {
@@ -77,6 +77,11 @@ type UpdateSlideshowInput = Partial<{
   source_transcript_note: string;
   exported_at: string | null;
   scheduled_for: string | null;
+}>;
+
+type UpdateContentDraftInput = Partial<CreateContentDraftInput & {
+  status: ContentDraft['status'];
+  updated_at: string;
 }>;
 
 // Sort helper — avoids composite index requirement for compound queries
@@ -289,6 +294,79 @@ export async function updateSlideshow(id: string, input: UpdateSlideshowInput): 
 
 export async function deleteSlideshow(id: string): Promise<void> {
   await deleteDoc(doc(db, 'slideshows', id));
+}
+
+// ---- Content Drafts ----
+
+export async function getContentDrafts(): Promise<ContentDraft[]> {
+  const q = query(collection(db, 'content_drafts'), orderBy('created_at', 'desc'));
+  const snap = await getDocs(q);
+  const drafts = snap.docs.map((d) => docToObj<ContentDraft>(d));
+
+  const uniqueProjectIds = [...new Set(drafts.map((draft) => draft.project_id).filter(Boolean))];
+  const projects = await Promise.all(uniqueProjectIds.map((id) => getProject(id)));
+  const projectMap = new Map<string, Project>();
+  for (const project of projects) {
+    if (project) projectMap.set(project.id, project);
+  }
+
+  return drafts.map((draft) => ({ ...draft, project: projectMap.get(draft.project_id) }) as ContentDraft);
+}
+
+export async function getContentDraft(id: string): Promise<ContentDraft | null> {
+  const snap = await getDoc(doc(db, 'content_drafts', id));
+  if (!snap.exists()) return null;
+  const draft = docToObj<ContentDraft>(snap);
+  if (draft.project_id) draft.project = (await getProject(draft.project_id)) || undefined;
+  return draft;
+}
+
+export async function createContentDraft(input: CreateContentDraftInput): Promise<ContentDraft> {
+  const now = Timestamp.now().toDate().toISOString();
+  const data = {
+    ...input,
+    status: input.status || 'review',
+    scheduled_for: input.scheduled_for ?? null,
+    thread_items: input.thread_items || [],
+    source_notes: input.source_notes || '',
+    voice_notes_used: input.voice_notes_used || '',
+    objective: input.objective || '',
+    hook: input.hook || '',
+    variants: input.variants || [],
+    created_at: now,
+    updated_at: now,
+  };
+  const ref = await addDoc(collection(db, 'content_drafts'), data);
+  return { id: ref.id, ...data } as ContentDraft;
+}
+
+export async function updateContentDraft(id: string, input: UpdateContentDraftInput): Promise<ContentDraft> {
+  const ref = doc(db, 'content_drafts', id);
+  await updateDoc(ref, { ...input, updated_at: Timestamp.now().toDate().toISOString() });
+  const snap = await getDoc(ref);
+  return docToObj<ContentDraft>(snap);
+}
+
+export async function deleteContentDraft(id: string): Promise<void> {
+  await deleteDoc(doc(db, 'content_drafts', id));
+}
+
+export async function createVoiceLearningEvent(
+  input: Omit<VoiceLearningEvent, 'id' | 'created_at'>
+): Promise<VoiceLearningEvent> {
+  const data = { ...input, created_at: Timestamp.now().toDate().toISOString() };
+  const ref = await addDoc(collection(db, 'voice_learning_events'), data);
+  return { id: ref.id, ...data } as VoiceLearningEvent;
+}
+
+export async function getVoiceLearningEvents(projectId: string): Promise<VoiceLearningEvent[]> {
+  const q = query(collection(db, 'voice_learning_events'), where('project_id', '==', projectId));
+  const snap = await getDocs(q);
+  return sortByCreatedAt(snap.docs.map((d) => docToObj<VoiceLearningEvent>(d)));
+}
+
+export async function updateProjectVoiceLearningNotes(projectId: string, notes: string): Promise<Project> {
+  return updateProject(projectId, { voice_learning_notes: notes });
 }
 
 // ---- Image Collections ----

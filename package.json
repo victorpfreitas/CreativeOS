@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "node ./node_modules/vite/bin/vite.js",
     "typecheck": "node ./node_modules/typescript/bin/tsc -b",
-    "build": "npm run typecheck && node ./node_modules/vite/bin/vite.js build",
-    "build:fast": "node ./node_modules/vite/bin/vite.js build",
+    "build": "npm run typecheck && node ./node_modules/vite/bin/vite.js build --configLoader runner",
+    "build:fast": "node ./node_modules/vite/bin/vite.js build --configLoader runner",
     "preview": "node ./node_modules/vite/bin/vite.js preview"
   },
   "dependencies": {

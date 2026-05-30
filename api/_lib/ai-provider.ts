@@ -8,6 +8,7 @@ function readEnvKey(...keys: string[]) {
 
 const GEMINI_API_KEY = readEnvKey('GEMINI_API_KEY', 'VITE_GEMINI_API_KEY');
 const OPENROUTER_API_KEY = readEnvKey('OPENROUTER_API_KEY', 'VITE_OPENROUTER_API_KEY');
+const OPENROUTER_MODEL = readEnvKey('OPENROUTER_MODEL', 'VITE_OPENROUTER_MODEL') || 'openrouter/free';
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 const AI_TIMEOUT_MS = 45000;
 
@@ -23,6 +24,14 @@ async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = AI_T
 
 function providerError(provider: string, status?: number) {
   return status ? `${provider} returned ${status}` : `${provider} did not return usable content`;
+}
+
+async function providerStatusError(provider: string, response: Response) {
+  const details = await response.text().catch(() => '');
+  const normalizedDetails = details.replace(/\s+/g, ' ').trim().slice(0, 240);
+  return normalizedDetails
+    ? `${provider} returned ${response.status}: ${normalizedDetails}`
+    : providerError(provider, response.status);
 }
 
 export function cleanJsonText(text: string) {
@@ -77,7 +86,7 @@ export async function generateAiText(prompt: string) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'minimax/minimax-m2.5:free',
+        model: OPENROUTER_MODEL,
         messages: [{
           role: 'user',
           content: `${prompt}\n\nIMPORTANT: Return ONLY valid JSON when JSON is requested. Do not use markdown code blocks.`,
@@ -86,7 +95,7 @@ export async function generateAiText(prompt: string) {
     });
 
     if (!response.ok) {
-      providerErrors.push(providerError('OpenRouter', response.status));
+      providerErrors.push(await providerStatusError('OpenRouter', response));
       throw new Error(providerErrors.join(' | '));
     }
 

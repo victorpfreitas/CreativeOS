@@ -78,9 +78,12 @@ VITE_FIREBASE_APP_ID=...
 
 GEMINI_API_KEY=...
 OPENROUTER_API_KEY=...
+
+# Upload de imagens (ImgBB) — server-side, sem prefixo VITE_
+IMGBB_API_KEY=...
 ```
 
-As chaves de IA devem ser tratadas como server-side. Evite depender de variáveis `VITE_` para provedores de IA em produção.
+As chaves de IA e de upload devem ser tratadas como server-side. Evite depender de variáveis `VITE_` para provedores de IA ou para o upload (ImgBB) em produção — o upload passa pela função serverless `api/upload.ts`, que mantém a `IMGBB_API_KEY` fora do bundle do cliente.
 
 ---
 

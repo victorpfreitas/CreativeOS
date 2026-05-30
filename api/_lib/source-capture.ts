@@ -1,6 +1,7 @@
 import { collection, doc, getDoc, getDocs, query, where } from 'firebase/firestore';
 import type { Automation, ContentBrief } from '../../src/lib/types';
 import { serverDb } from './firebase-server.js';
+import { parsePublicHttpUrl } from './http-validation.js';
 
 type SourceCaptureType = NonNullable<ContentBrief['source_capture_type']>;
 type SourceCaptureStatus = NonNullable<ContentBrief['source_capture_status']>;
@@ -23,14 +24,10 @@ type ResolveSourceCaptureInput = {
 
 const PROBE_TIMEOUT_MS = 8000;
 
+// Aceita somente http/https publicos. Hosts internos/privados sao descartados
+// para evitar SSRF, ja que esta URL acaba sendo buscada por probeImageUrl.
 function normalizeUrl(value?: string) {
-  const trimmed = String(value || '').trim();
-  if (!trimmed) return '';
-  try {
-    return new URL(trimmed).toString();
-  } catch {
-    return '';
-  }
+  return parsePublicHttpUrl(value)?.toString() || '';
 }
 
 function getYouTubeVideoId(url: string) {

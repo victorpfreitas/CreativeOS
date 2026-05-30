@@ -1,19 +1,29 @@
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === 'string' ? reader.result : '';
+      const commaIndex = result.indexOf(',');
+      resolve(commaIndex >= 0 ? result.slice(commaIndex + 1) : result);
+    };
+    reader.onerror = () => reject(new Error('Nao consegui ler o arquivo de imagem.'));
+    reader.readAsDataURL(file);
+  });
+}
+
 export async function uploadImageToStorage(file: File): Promise<string> {
-  const apiKey = import.meta.env.VITE_IMGBB_API_KEY as string | undefined;
-  if (!apiKey) throw new Error('A chave da API do ImgBB não está configurada (VITE_IMGBB_API_KEY).');
+  const image = await fileToBase64(file);
 
-  const formData = new FormData();
-  formData.append('image', file);
-
-  const response = await fetch(`https://api.imgbb.com/1/upload?key=${apiKey}`, {
+  const response = await fetch('/api/upload', {
     method: 'POST',
-    body: formData,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ image }),
   });
 
-  const data = await response.json();
-  if (!data.success) {
-    throw new Error(data.error?.message || 'Falha ao fazer upload da imagem.');
+  const data = await response.json().catch(() => null);
+  if (!response.ok || !data?.url) {
+    throw new Error(data?.error || 'Falha ao fazer upload da imagem.');
   }
 
-  return data.data.url as string;
+  return data.url as string;
 }

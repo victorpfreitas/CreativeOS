@@ -30,6 +30,27 @@ function localApiPlugin() {
         }
       });
 
+      server.middlewares.use('/api/upload', async (req: any, res: any) => {
+        if (req.method !== 'POST') {
+          res.statusCode = 405;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ error: 'Method not allowed' }));
+          return;
+        }
+
+        try {
+          const chunks: Buffer[] = [];
+          for await (const chunk of req) chunks.push(Buffer.from(chunk));
+          req.body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
+          const handler = (await server.ssrLoadModule('/api/upload.ts')).default;
+          await handler(req, createJsonResponse(res));
+        } catch (err) {
+          res.statusCode = 500;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ error: err instanceof Error ? err.message : 'Local upload API error' }));
+        }
+      });
+
       server.middlewares.use('/api/source/rss', async (req: any, res: any) => {
         try {
           const requestUrl = new URL(req.url || '', 'http://127.0.0.1');

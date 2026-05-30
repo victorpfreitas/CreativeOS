@@ -27,6 +27,7 @@ export interface Project {
   name: string;
   knowledge_base: string;
   voice_learning_notes?: string;
+  voice_samples?: string[];
   brand_dna?: BrandDNA;
   created_at: string;
 }
@@ -222,6 +223,8 @@ export interface ContentDraft {
   objective: string;
   hook: string;
   variants: string[];
+  content_angle?: string;
+  batch_id?: string;
   created_at: string;
   updated_at: string;
   // Joined fields
@@ -249,6 +252,7 @@ export interface XContentDraftResult {
   objective: string;
   variants: string[];
   voice_notes_used: string;
+  angle?: string;
 }
 
 export interface ExpertContentPreset {
@@ -280,6 +284,7 @@ export interface CreateProjectInput {
   name: string;
   knowledge_base: string;
   voice_learning_notes?: string;
+  voice_samples?: string[];
   brand_dna?: BrandDNA;
 }
 
@@ -297,6 +302,8 @@ export interface CreateContentDraftInput {
   objective?: string;
   hook?: string;
   variants?: string[];
+  content_angle?: string;
+  batch_id?: string;
 }
 
 export interface CreateAutomationInput {

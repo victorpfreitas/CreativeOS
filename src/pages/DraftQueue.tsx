@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import type { ContentDraft, Project, Slideshow } from '../lib/types';
 import * as db from '../lib/database';
 import { getSlideshowProjectId } from '../lib/queueUtils';
+import { spreadSchedule } from '../lib/scheduleUtils';
 
 type BoardStatus = 'review' | 'approved' | 'scheduled';
 type BoardItem =
@@ -58,6 +59,10 @@ export default function DraftQueue() {
   const [projectFilter, setProjectFilter] = useState('all');
   const [scheduleInputs, setScheduleInputs] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState('');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkStartDate, setBulkStartDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [bulkTimes, setBulkTimes] = useState('09:00, 18:00');
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -170,6 +175,80 @@ export default function DraftQueue() {
     }
   }
 
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set());
+  }
+
+  // Drafts de texto selecionados (apenas kind 'content'), na ordem do board.
+  const selectedDrafts = useMemo(
+    () => boardItems
+      .filter((item): item is Extract<BoardItem, { kind: 'content' }> => item.kind === 'content' && selectedIds.has(item.id))
+      .map((item) => item.draft),
+    [boardItems, selectedIds]
+  );
+
+  async function bulkApprove() {
+    const targets = selectedDrafts.filter((draft) => draft.status === 'review');
+    if (targets.length === 0) {
+      setNotice('Nenhum draft em "Para revisar" selecionado.');
+      return;
+    }
+    setBulkBusy(true);
+    try {
+      for (const draft of targets) {
+        await moveContentDraft(draft, 'approved');
+      }
+      setNotice(`${targets.length} draft(s) aprovado(s).`);
+      clearSelection();
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  async function bulkSchedule() {
+    const targets = selectedDrafts.filter((draft) => draft.status !== 'scheduled');
+    if (targets.length === 0) {
+      setNotice('Selecione drafts ainda não agendados.');
+      return;
+    }
+    const times = bulkTimes.split(',').map((value) => value.trim()).filter(Boolean);
+    const slots = spreadSchedule({ startDate: bulkStartDate, times, count: targets.length });
+    if (slots.length < targets.length) {
+      setNotice('Informe uma data e ao menos um horário válido (ex.: 09:00, 18:00).');
+      return;
+    }
+    setBulkBusy(true);
+    try {
+      for (let index = 0; index < targets.length; index += 1) {
+        const draft = targets[index];
+        const scheduledFor = slots[index];
+        const updated = await db.updateContentDraft(draft.id, { status: 'scheduled', scheduled_for: scheduledFor });
+        setDrafts((prev) => prev.map((item) => item.id === draft.id ? { ...updated, project: item.project } : item));
+        setScheduleInputs((prev) => ({ ...prev, [`content:${draft.id}`]: toDatetimeLocal(scheduledFor) }));
+        await db.createVoiceLearningEvent({
+          project_id: draft.project_id,
+          draft_id: draft.id,
+          event_type: 'scheduled',
+          format: draft.format,
+          instruction: 'Draft agendado em massa pelo board.',
+        });
+      }
+      setNotice(`${targets.length} draft(s) agendado(s).`);
+      clearSelection();
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-[320px] flex items-center justify-center text-slate-500">
@@ -203,6 +282,35 @@ export default function DraftQueue() {
 
       {notice && <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4 text-sm text-emerald-200">{notice}</div>}
 
+      {selectedDrafts.length > 0 && (
+        <div className="flex flex-col gap-3 rounded-2xl border border-indigo-500/30 bg-indigo-500/10 p-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="flex flex-wrap items-end gap-3">
+            <div>
+              <p className="premium-label">{selectedDrafts.length} selecionado(s)</p>
+              <button onClick={clearSelection} className="mt-1 text-xs font-bold uppercase tracking-widest text-indigo-200 hover:text-white">Limpar seleção</button>
+            </div>
+            <div>
+              <label className="premium-label">A partir de</label>
+              <input type="date" value={bulkStartDate} onChange={(event) => setBulkStartDate(event.target.value)} className="premium-input mt-1 block" />
+            </div>
+            <div>
+              <label className="premium-label">Horários (vírgula)</label>
+              <input value={bulkTimes} onChange={(event) => setBulkTimes(event.target.value)} placeholder="09:00, 18:00" className="premium-input mt-1 block" />
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={bulkApprove} disabled={bulkBusy} className="premium-button-secondary flex items-center gap-2 disabled:opacity-50">
+              {bulkBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+              Aprovar selecionados
+            </button>
+            <button onClick={bulkSchedule} disabled={bulkBusy} className="premium-button-primary flex items-center gap-2 disabled:opacity-50">
+              {bulkBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarClock className="h-4 w-4" />}
+              Agendar selecionados
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         {columns.map((column) => {
           const items = boardItems.filter((item) => item.status === column.id);
@@ -231,6 +339,8 @@ export default function DraftQueue() {
                       : item.slideshow.automation?.project || projectMap.get(getSlideshowProjectId(item.slideshow))}
                     scheduleValue={scheduleInputs[item.id] || ''}
                     onScheduleChange={(value) => setScheduleInputs((prev) => ({ ...prev, [item.id]: value }))}
+                    selected={selectedIds.has(item.id)}
+                    onToggleSelect={item.kind === 'content' ? () => toggleSelect(item.id) : undefined}
                     onCopy={() => copyItem(item)}
                     onApprove={() => item.kind === 'content'
                       ? moveContentDraft(item.draft, 'approved')
@@ -261,6 +371,8 @@ function BoardCard({
   project,
   scheduleValue,
   onScheduleChange,
+  selected,
+  onToggleSelect,
   onCopy,
   onApprove,
   onSchedule,
@@ -272,6 +384,8 @@ function BoardCard({
   project?: Project;
   scheduleValue: string;
   onScheduleChange: (value: string) => void;
+  selected?: boolean;
+  onToggleSelect?: () => void;
   onCopy: () => void;
   onApprove: () => void;
   onSchedule: () => void;
@@ -297,6 +411,16 @@ function BoardCard({
     <article className="rounded-2xl border border-white/10 bg-[#111] p-4 shadow-xl shadow-black/10">
       <div className="mb-3 flex items-center justify-between gap-3">
         <span className="inline-flex items-center gap-2 rounded-full bg-white/[0.04] px-3 py-1 text-[11px] font-black uppercase tracking-widest text-slate-300">
+          {onToggleSelect && (
+            <input
+              type="checkbox"
+              checked={!!selected}
+              onChange={onToggleSelect}
+              onClick={(event) => event.stopPropagation()}
+              className="h-3.5 w-3.5 accent-indigo-500"
+              title="Selecionar para ação em massa"
+            />
+          )}
           <Icon className="h-3.5 w-3.5" /> {formatLabel}
         </span>
         {item.status === 'scheduled' && (

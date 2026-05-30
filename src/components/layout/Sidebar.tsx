@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { CalendarDays, Home, FolderGit2, Inbox, Zap, Settings, Images, Film, Sparkles } from 'lucide-react';
+import { CalendarDays, Home, FolderGit2, Inbox, Zap, Settings, Images, Film, Sparkles, Layers } from 'lucide-react';
 
 export default function Sidebar() {
   const links = [
@@ -7,6 +7,7 @@ export default function Sidebar() {
     { to: '/queue', icon: Inbox, label: 'Content Board' },
     { to: '/schedule', icon: CalendarDays, label: 'Agenda' },
     { to: '/create', icon: Sparkles, label: 'Criar Conteúdo' },
+    { to: '/batch', icon: Layers, label: 'Gerar em Lote' },
     { to: '/projects', icon: FolderGit2, label: 'Experts' },
     { to: '/automations', icon: Zap, label: 'Sistemas' },
     { to: '/collections', icon: Images, label: 'Assets' },

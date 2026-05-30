@@ -1,14 +1,9 @@
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
-import { fileURLToPath, pathToFileURL } from 'url';
+import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const dynamicImport = new Function('moduleUrl', 'return import(moduleUrl)') as (moduleUrl: string) => Promise<any>;
-
-function importLocalApi(relativePath: string) {
-  return dynamicImport(pathToFileURL(path.resolve(__dirname, relativePath)).href);
-}
 
 function localApiPlugin() {
   return {
@@ -26,7 +21,7 @@ function localApiPlugin() {
           const chunks: Buffer[] = [];
           for await (const chunk of req) chunks.push(Buffer.from(chunk));
           req.body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
-          const handler = (await importLocalApi('./api/ai.ts')).default;
+          const handler = (await server.ssrLoadModule('/api/ai.ts')).default;
           await handler(req, createJsonResponse(res));
         } catch (err) {
           res.statusCode = 500;
@@ -39,7 +34,7 @@ function localApiPlugin() {
         try {
           const requestUrl = new URL(req.url || '', 'http://127.0.0.1');
           req.query = Object.fromEntries(requestUrl.searchParams.entries());
-          const handler = (await importLocalApi('./api/source/rss.ts')).default;
+          const handler = (await server.ssrLoadModule('/api/source/rss.ts')).default;
           await handler(req, createJsonResponse(res));
         } catch (err) {
           res.statusCode = 500;
@@ -52,7 +47,7 @@ function localApiPlugin() {
         try {
           const requestUrl = new URL(req.url || '', 'http://127.0.0.1');
           req.query = Object.fromEntries(requestUrl.searchParams.entries());
-          const handler = (await importLocalApi('./api/source/resolve-image.ts')).default;
+          const handler = (await server.ssrLoadModule('/api/source/resolve-image.ts')).default;
           await handler(req, createJsonResponse(res));
         } catch (err) {
           res.statusCode = 500;

@@ -13,7 +13,7 @@ export default async function handler(req: any, res: any) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { prompt, models } = req.body || {};
+  const { prompt, models, providerOrder } = req.body || {};
   if (!prompt || typeof prompt !== 'string') {
     return res.status(400).json({ error: 'Missing prompt' });
   }
@@ -22,7 +22,10 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    const { text } = await generateAiText(prompt, { openRouterModels: models });
+    const { text } = await generateAiText(prompt, {
+      openRouterModels: models,
+      providerOrder: providerOrder === 'openrouter_first' ? 'openrouter_first' : 'default',
+    });
     return res.status(200).json({ text });
   } catch (err: any) {
     const status = err?.message?.includes('IA nao configurada') ? 503 : 502;

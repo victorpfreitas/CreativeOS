@@ -15,7 +15,7 @@ import type {
 import { getExpertContentPreset } from '../lib/contentPresets';
 import { loadOpenRouterModels } from '../lib/aiSettings';
 
-async function callAI(prompt: string): Promise<string> {
+async function callAI(prompt: string, options?: { providerOrder?: 'default' | 'openrouter_first' }): Promise<string> {
   const controller = new AbortController();
   // Allow extra time: the server may cascade through several OpenRouter models.
   const timeout = window.setTimeout(() => controller.abort(), 120000);
@@ -27,7 +27,7 @@ async function callAI(prompt: string): Promise<string> {
     const response = await fetch('/api/ai', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, models }),
+      body: JSON.stringify({ prompt, models, providerOrder: options?.providerOrder }),
       signal: controller.signal,
     });
 
@@ -405,6 +405,13 @@ export interface XVoiceReview {
   rewrite_instruction: string;
 }
 
+export interface XBatchSource {
+  type: 'manual' | 'x_post' | 'x_url' | 'youtube' | 'transcript' | 'notes';
+  title?: string;
+  url?: string;
+  text?: string;
+}
+
 interface XBatchBaseParams {
   mode: 'pillars' | 'topic';
   topic?: string;
@@ -416,6 +423,7 @@ interface XBatchBaseParams {
   voiceSamples?: string[];
   approvedExamples?: string[];
   voiceLearningNotes?: string;
+  sources?: XBatchSource[];
 }
 
 function buildBatchStyleGuide(styleGuidance?: string): string {
@@ -423,6 +431,26 @@ function buildBatchStyleGuide(styleGuidance?: string): string {
   if (!guide) return '';
   return `Batch writing direction from the human operator. Treat this as higher priority than generic style rules:
 ${guide}`;
+}
+
+function buildBatchSourceContext(sources?: XBatchSource[]): string {
+  const cleaned = (sources || [])
+    .map((source, index) => {
+      const text = limitText(source.text, 1800);
+      const parts = [
+        `Fonte ${index + 1} (${source.type})`,
+        source.title ? `Titulo: ${source.title}` : '',
+        source.url ? `URL: ${source.url}` : '',
+        text ? `Conteudo:\n${text}` : '',
+      ].filter(Boolean);
+      return parts.length > 1 ? parts.join('\n') : '';
+    })
+    .filter(Boolean)
+    .slice(0, 8);
+
+  if (!cleaned.length) return '';
+  return `Source material provided by the operator. Use it to extract theses, tensions, examples, objections, and vocabulary. Do not merely summarize it:
+${cleaned.join('\n\n')}`;
 }
 
 function pickBatchFormat(formatMix: 'x_post' | 'x_thread' | 'mixed', index: number): ContentDraft['format'] {
@@ -476,10 +504,12 @@ export async function generateXResearchPlan(params: XBatchBaseParams): Promise<X
     voiceSamples,
     approvedExamples,
     voiceLearningNotes,
+    sources,
   } = params;
   const count = Math.max(1, Math.min(30, Math.round(params.count || 12)));
   const voiceContext = buildVoiceContext({ brandDNA, knowledgeBase, voiceSamples, approvedExamples, voiceLearningNotes });
   const styleGuide = buildBatchStyleGuide(styleGuidance);
+  const sourceContext = buildBatchSourceContext(sources);
 
   const prompt = `You are the Researcher stage for CreativeOS.
 
@@ -491,6 +521,7 @@ ${mode === 'topic'
 
 ${voiceContext ? `${voiceContext}\n` : ''}
 ${styleGuide ? `${styleGuide}\n` : ''}
+${sourceContext ? `${sourceContext}\n` : ''}
 
 Quality filters:
 - Thesis before hook: every angle must defend a clear point of view.
@@ -499,6 +530,7 @@ Quality filters:
 - Distance: angles must do different editorial jobs, not cosmetic variations.
 - Native to X: deliver value in the post/thread itself.
 - Fit the expert's beliefs, common enemy, proof, and mechanism.
+- If sources were provided, each angle must be derived from a source insight, quote, objection, or example.
 
 Return ONLY valid JSON with this exact structure:
 {
@@ -522,7 +554,7 @@ Return ONLY valid JSON with this exact structure:
 
 Generate ${count} items. Write in pt-BR.`;
 
-  const text = await callAI(prompt);
+  const text = await callAI(prompt, { providerOrder: 'openrouter_first' });
   const raw = parseAIJson<Partial<XResearchPlan>>(text, 'plano de pesquisa do lote');
   const items = (Array.isArray(raw.items) ? raw.items : [])
     .map((item, index) => normalizeResearchItem(item, index, formatMix))
@@ -599,7 +631,7 @@ Return ONLY valid JSON:
 
 export async function generateXDraftsFromResearch(params: XBatchBaseParams & {
   researchItems: XResearchItem[];
-  onProgress?: (done: number, total: number) => void;
+  onProgress?: (done: number, total: number, stage?: 'copywriter' | 'reviewer') => void;
 }): Promise<XBatchResult> {
   const {
     researchItems,
@@ -610,11 +642,13 @@ export async function generateXDraftsFromResearch(params: XBatchBaseParams & {
     voiceSamples,
     approvedExamples,
     voiceLearningNotes,
+    sources,
     onProgress,
   } = params;
   const count = researchItems.length;
   const voiceContext = buildVoiceContext({ brandDNA, knowledgeBase, voiceSamples, approvedExamples, voiceLearningNotes });
   const styleGuide = buildBatchStyleGuide(styleGuidance);
+  const sourceContext = buildBatchSourceContext(sources);
   const chunks: XResearchItem[][] = [];
   for (let i = 0; i < researchItems.length; i += BATCH_CHUNK_SIZE) {
     chunks.push(researchItems.slice(i, i + BATCH_CHUNK_SIZE));
@@ -645,6 +679,7 @@ Risk flags to avoid: ${spec.risk_flags.join(', ') || 'none'}`).join('\n\n')}
 
 ${voiceContext ? `${voiceContext}\n` : ''}
 ${styleGuide ? `${styleGuide}\n` : ''}
+${sourceContext ? `${sourceContext}\n` : ''}
 
 ${ANTI_GENERIC_RULES}
 
@@ -654,18 +689,26 @@ Rules:
 - Include 3 short alternative hooks in "variants".
 - Write from the thesis, not from a generic hook formula.
 - "angle" must echo the approved angle.
+- Also act as the Voice Reviewer for each draft in the same response:
+  - "voice_review_score" is 0-100 for fit with the expert's voice and specificity.
+  - "voice_review_verdict" is "pass", "needs_review", or "reject".
+  - "voice_review_notes" is a short pt-BR note explaining what worked or what still sounds generic.
 
 Return ONLY a JSON array of ${chunkSpec.length} objects with this exact structure:
 [
-  {"angle":"the angle","title":"short internal title","hook":"strongest opening line","body":"single post body or empty for thread","thread_items":["t1","t2"],"objective":"strategic reason","variants":["v1","v2","v3"],"voice_notes_used":"voice signals used"}
+  {"angle":"the angle","title":"short internal title","hook":"strongest opening line","body":"single post body or empty for thread","thread_items":["t1","t2"],"objective":"strategic reason","variants":["v1","v2","v3"],"voice_notes_used":"voice signals used","voice_review_score":82,"voice_review_verdict":"pass","voice_review_notes":"short voice review"}
 ]`;
 
     try {
-      const text = await callAI(expandPrompt);
-      const raw = parseAIJsonArray<Partial<XContentDraftResult>>(text, 'copy do lote para X');
+      const text = await callAI(expandPrompt, { providerOrder: 'openrouter_first' });
+      const raw = parseAIJsonArray<Partial<XContentDraftResult & Pick<XBatchItem, 'voice_review_score' | 'voice_review_verdict' | 'voice_review_notes'>>>(text, 'copy do lote para X');
       raw.forEach((entry, indexInChunk) => {
         const spec = chunkSpec[indexInChunk] || chunkSpec[chunkSpec.length - 1];
         const normalized = normalizeXResult(entry, spec.format, entry.angle || spec.angle, voiceLearningNotes);
+        const score = Math.max(0, Math.min(100, Number(entry.voice_review_score) || 60));
+        const verdict = entry.voice_review_verdict === 'pass' || entry.voice_review_verdict === 'needs_review' || entry.voice_review_verdict === 'reject'
+          ? entry.voice_review_verdict
+          : score >= 82 ? 'pass' : score >= 60 ? 'needs_review' : 'reject';
         items.push({
           ...normalized,
           angle: normalized.angle || spec.angle,
@@ -676,28 +719,19 @@ Return ONLY a JSON array of ${chunkSpec.length} objects with this exact structur
             spec.conversation_trigger ? `Gatilho de conversa: ${spec.conversation_trigger}` : '',
             spec.source_note ? `Fonte/insight: ${spec.source_note}` : '',
           ].filter(Boolean).join('\n')),
+          voice_review_score: score,
+          voice_review_verdict: verdict,
+          voice_review_notes: limitText(entry.voice_review_notes, 320),
         });
       });
     } catch {
       failedChunks += 1;
     }
 
-    onProgress?.(Math.min(items.length, count), count);
+    onProgress?.(Math.min(items.length, count), count, 'copywriter');
   }
 
-  const reviewedItems: XBatchItem[] = [];
-  for (const item of items.slice(0, count)) {
-    const review = await reviewXDraftVoice({ item, brandDNA, knowledgeBase, voiceSamples, approvedExamples, voiceLearningNotes, styleGuidance });
-    reviewedItems.push({
-      ...item,
-      voice_review_score: review.score,
-      voice_review_verdict: review.verdict,
-      voice_review_notes: review.notes,
-    });
-    onProgress?.(reviewedItems.length, count);
-  }
-
-  return { items: reviewedItems, requested: count, failedChunks };
+  return { items: items.slice(0, count), requested: count, failedChunks };
 }
 
 // Gera muitos drafts de X de uma vez: 1 call de outline (angulos) + N calls de expansao em chunks.

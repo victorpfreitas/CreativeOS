@@ -48,11 +48,61 @@ export function cleanJsonText(text: string) {
   return text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
 }
 
-export async function generateAiText(prompt: string, options?: { openRouterModels?: string[] }) {
+export async function generateAiText(prompt: string, options?: { openRouterModels?: string[]; providerOrder?: 'default' | 'openrouter_first' }) {
   const providerErrors: string[] = [];
   const openRouterModels = sanitizeModels(options?.openRouterModels, OPENROUTER_ENV_MODELS);
+  const openRouterFirst = options?.providerOrder === 'openrouter_first';
 
-  if (GEMINI_API_KEY) {
+  async function tryOpenRouter() {
+    if (!OPENROUTER_API_KEY) return null;
+
+    // Try each OpenRouter model in order until one returns usable content.
+    for (const model of openRouterModels) {
+      try {
+        const response = await fetchWithTimeout('https://openrouter.ai/api/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model,
+            messages: [{
+              role: 'user',
+              content: `${prompt}\n\nIMPORTANT: Return ONLY valid JSON when JSON is requested. Do not use markdown code blocks.`,
+            }],
+          }),
+        }, OPENROUTER_TIMEOUT_MS);
+
+        if (!response.ok) {
+          providerErrors.push(await providerStatusError(`OpenRouter[${model}]`, response));
+          continue;
+        }
+
+        const data = await response.json();
+        const text = data.choices?.[0]?.message?.content;
+        if (!text) {
+          providerErrors.push(providerError(`OpenRouter[${model}]`));
+          continue;
+        }
+
+        return { text: cleanJsonText(text), providerErrors };
+      } catch (err: any) {
+        providerErrors.push(err?.name === 'AbortError'
+          ? `OpenRouter[${model}] timed out`
+          : `OpenRouter[${model}] request failed`);
+      }
+    }
+
+    return null;
+  }
+
+  async function tryGemini() {
+    if (!GEMINI_API_KEY) {
+      providerErrors.push('Gemini key is not configured');
+      return null;
+    }
+
     try {
       const response = await fetchWithTimeout(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
         method: 'POST',
@@ -77,8 +127,18 @@ export async function generateAiText(prompt: string, options?: { openRouterModel
     } catch (err: any) {
       providerErrors.push(err?.name === 'AbortError' ? 'Gemini timed out' : 'Gemini request failed');
     }
+
+    return null;
+  }
+
+  if (openRouterFirst) {
+    const openRouterResult = await tryOpenRouter();
+    if (openRouterResult) return openRouterResult;
+    const geminiResult = await tryGemini();
+    if (geminiResult) return geminiResult;
   } else {
-    providerErrors.push('Gemini key is not configured');
+    const geminiResult = await tryGemini();
+    if (geminiResult) return geminiResult;
   }
 
   if (!OPENROUTER_API_KEY && !GEMINI_API_KEY) {
@@ -89,43 +149,8 @@ export async function generateAiText(prompt: string, options?: { openRouterModel
     throw new Error(providerErrors.join(' | ') || 'Nenhum provedor de IA retornou conteudo.');
   }
 
-  // Try each OpenRouter model in order until one returns usable content.
-  for (const model of openRouterModels) {
-    try {
-      const response = await fetchWithTimeout('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model,
-          messages: [{
-            role: 'user',
-            content: `${prompt}\n\nIMPORTANT: Return ONLY valid JSON when JSON is requested. Do not use markdown code blocks.`,
-          }],
-        }),
-      }, OPENROUTER_TIMEOUT_MS);
-
-      if (!response.ok) {
-        providerErrors.push(await providerStatusError(`OpenRouter[${model}]`, response));
-        continue;
-      }
-
-      const data = await response.json();
-      const text = data.choices?.[0]?.message?.content;
-      if (!text) {
-        providerErrors.push(providerError(`OpenRouter[${model}]`));
-        continue;
-      }
-
-      return { text: cleanJsonText(text), providerErrors };
-    } catch (err: any) {
-      providerErrors.push(err?.name === 'AbortError'
-        ? `OpenRouter[${model}] timed out`
-        : `OpenRouter[${model}] request failed`);
-    }
-  }
+  const openRouterResult = await tryOpenRouter();
+  if (openRouterResult) return openRouterResult;
 
   throw new Error(providerErrors.join(' | ') || 'Nenhum provedor de IA retornou conteudo.');
 }

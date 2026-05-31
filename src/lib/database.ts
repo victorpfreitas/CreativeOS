@@ -340,6 +340,11 @@ export async function createContentDraft(input: CreateContentDraftInput): Promis
     voice_review_verdict: input.voice_review_verdict || '',
     voice_review_notes: input.voice_review_notes || '',
     batch_id: input.batch_id || '',
+    source_type: input.source_type || 'manual',
+    source_url: input.source_url || '',
+    source_title: input.source_title || '',
+    source_excerpt: input.source_excerpt || '',
+    source_refs: input.source_refs || [],
     created_at: now,
     updated_at: now,
   };

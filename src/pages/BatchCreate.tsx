@@ -3,7 +3,10 @@ import {
   AlertTriangle,
   Check,
   CheckSquare,
+  Clock3,
+  FileText,
   Layers,
+  Link2,
   Loader2,
   Minus,
   Plus,
@@ -11,6 +14,7 @@ import {
   Sparkles,
   Square,
   Wand2,
+  Youtube,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import type { ContentDraft, Project } from '../lib/types';
@@ -19,14 +23,27 @@ import {
   generateXDraftsFromResearch,
   generateXResearchPlan,
   type XBatchItem,
+  type XBatchSource,
   type XResearchItem,
 } from '../services/geminiService';
+import { fetchYouTubeSource } from '../services/sourceService';
 
 const inputCls = 'w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500';
 
 type Mode = 'pillars' | 'topic';
 type FormatMix = 'x_post' | 'x_thread' | 'mixed';
 type CopyMode = 'voz' | 'provocativo' | 'direto' | 'didatico' | 'autoridade';
+type SourceKind = XBatchSource['type'];
+type PipelineStage = 'brief' | 'sources' | 'researcher' | 'copywriter' | 'reviewer' | 'board';
+
+const sourceKindLabels: Record<SourceKind, string> = {
+  manual: 'Tema livre',
+  x_post: 'Post do X copiado',
+  x_url: 'Link de post do X',
+  youtube: 'YouTube',
+  transcript: 'Transcricao / resumo',
+  notes: 'Notas soltas',
+};
 
 function draftPreviewText(item: XBatchItem) {
   return item.format === 'x_thread'
@@ -62,6 +79,13 @@ export default function BatchCreate() {
   const [avoidList, setAvoidList] = useState('frases prontas, tom motivacional, promessas exageradas, hashtags, emojis');
   const [qualityBar, setQualityBar] = useState('Cada post precisa ter uma opiniao clara, um exemplo concreto e uma frase que eu realmente falaria.');
   const [savingVoiceRules, setSavingVoiceRules] = useState(false);
+  const [sourceKind, setSourceKind] = useState<SourceKind>('manual');
+  const [sourceTitle, setSourceTitle] = useState('');
+  const [sourceUrl, setSourceUrl] = useState('');
+  const [sourceText, setSourceText] = useState('');
+  const [sourceItems, setSourceItems] = useState<XBatchSource[]>([]);
+  const [loadingSource, setLoadingSource] = useState(false);
+  const [sourceError, setSourceError] = useState('');
 
   const [researchItems, setResearchItems] = useState<XResearchItem[]>([]);
   const [selectedIdeas, setSelectedIdeas] = useState<Set<number>>(new Set());
@@ -71,6 +95,10 @@ export default function BatchCreate() {
   const [generating, setGenerating] = useState(false);
   const [writing, setWriting] = useState(false);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
+  const [stage, setStage] = useState<PipelineStage>('brief');
+  const [stageDetail, setStageDetail] = useState('Configure o lote e adicione fontes para a IA sair do generico.');
+  const [startedAt, setStartedAt] = useState<number | null>(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -85,7 +113,20 @@ export default function BatchCreate() {
       .catch(() => setError('Nao consegui carregar os experts.'));
   }, []);
 
+  useEffect(() => {
+    if (!startedAt || (!generating && !writing && !saving)) return;
+    const id = window.setInterval(() => {
+      setElapsedSeconds(Math.max(0, Math.round((Date.now() - startedAt) / 1000)));
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [generating, saving, startedAt, writing]);
+
   const selectedProject = useMemo(() => projects.find((project) => project.id === projectId), [projects, projectId]);
+  const sourceSummary = useMemo(() => sourceItems.map((source) => {
+    const label = sourceKindLabels[source.type];
+    const title = source.title || source.url || source.text?.slice(0, 80) || label;
+    return `${label}: ${title}`;
+  }), [sourceItems]);
 
   function buildStyleGuidance() {
     const modeLabel: Record<CopyMode, string> = {
@@ -105,6 +146,67 @@ export default function BatchCreate() {
       'Nao tente parecer viral a qualquer custo. Prefira texto que eu teria coragem de postar no meu perfil.',
       'Se a ideia ficar generica, reescreva com mais especificidade antes de responder.',
     ].filter(Boolean).join('\n\n');
+  }
+
+  function startTimedStage(nextStage: PipelineStage, detail: string) {
+    setStartedAt(Date.now());
+    setElapsedSeconds(0);
+    setStage(nextStage);
+    setStageDetail(detail);
+  }
+
+  function addSourceItem(source?: XBatchSource) {
+    const nextSource: XBatchSource = source || {
+      type: sourceKind,
+      title: sourceTitle.trim(),
+      url: sourceUrl.trim(),
+      text: sourceText.trim(),
+    };
+    if (!nextSource.text?.trim() && !nextSource.url?.trim() && !nextSource.title?.trim()) {
+      setSourceError('Adicione texto, link ou titulo para registrar a fonte.');
+      return;
+    }
+    setSourceItems((current) => [...current, nextSource]);
+    setSourceTitle('');
+    setSourceUrl('');
+    setSourceText('');
+    setSourceError('');
+    setStage('sources');
+    setStageDetail('Fonte adicionada. O Researcher vai usar esses insumos para criar teses melhores.');
+  }
+
+  function removeSourceItem(index: number) {
+    setSourceItems((current) => current.filter((_, itemIndex) => itemIndex !== index));
+  }
+
+  async function handleLoadYouTubeSource() {
+    if (!sourceUrl.trim()) {
+      setSourceError('Cole a URL do YouTube antes de buscar.');
+      return;
+    }
+    setLoadingSource(true);
+    setSourceError('');
+    try {
+      const source = await fetchYouTubeSource(sourceUrl);
+      const transcript = source.text?.trim();
+      if (!transcript) {
+        setSourceTitle(source.title || sourceTitle);
+        setSourceText(source.note || 'Nao consegui puxar a transcricao automaticamente. Cole aqui um resumo, bullets ou transcricao manual.');
+        setSourceError('Nao veio transcricao automatica. Complete com resumo ou transcricao manual e adicione a fonte.');
+        return;
+      }
+      addSourceItem({
+        type: 'youtube',
+        title: source.title || sourceTitle || 'Video do YouTube',
+        url: source.url || sourceUrl.trim(),
+        text: transcript,
+      });
+      setNotice('Transcricao do YouTube adicionada como fonte do lote.');
+    } catch (err) {
+      setSourceError(err instanceof Error ? err.message : 'Nao consegui carregar esse video. Cole a transcricao ou resumo manualmente.');
+    } finally {
+      setLoadingSource(false);
+    }
   }
 
   async function handleSaveVoiceRules() {
@@ -131,21 +233,29 @@ export default function BatchCreate() {
     if (!selectedProject || !items[index]) return;
     const item = items[index];
     const text = draftPreviewText(item).slice(0, 900);
-    const marker = kind === 'good'
-      ? `Exemplo aprovado como referencia de voz:\n${text}`
-      : `Evitar este tipo de resultado em lotes futuros:\n${text}`;
     setLearningIndex(`${kind}:${index}`);
     setError('');
     try {
-      const existing = selectedProject.voice_learning_notes?.trim();
-      const nextNotes = [existing, marker].filter(Boolean).join('\n\n').slice(0, 2600);
-      await db.updateProjectVoiceLearningNotes(selectedProject.id, nextNotes);
-      setProjects((current) => current.map((project) => (
-        project.id === selectedProject.id ? { ...project, voice_learning_notes: nextNotes } : project
-      )));
+      if (kind === 'good') {
+        const existing = selectedProject.voice_learning_notes?.trim();
+        const nextNotes = [existing, `Exemplo aprovado como referencia de voz:\n${text}`].filter(Boolean).join('\n\n').slice(0, 2600);
+        await db.updateProjectVoiceLearningNotes(selectedProject.id, nextNotes);
+        setProjects((current) => current.map((project) => (
+          project.id === selectedProject.id ? { ...project, voice_learning_notes: nextNotes } : project
+        )));
+      }
+      await db.createVoiceLearningEvent({
+        project_id: selectedProject.id,
+        event_type: kind === 'good' ? 'used_as_reference' : 'rejected_voice',
+        format: item.format,
+        after_text: text,
+        instruction: kind === 'good'
+          ? 'O usuario marcou este post como referencia positiva no lote.'
+          : 'O usuario marcou este post como fora da voz no lote. Nao consolidar como memoria permanente sem revisao.',
+      });
       setNotice(kind === 'good'
         ? 'Salvei este post como referencia positiva de voz para os proximos lotes.'
-        : 'Salvei este resultado como exemplo do que evitar nos proximos lotes.');
+        : 'Registrei este feedback como sinal de revisao, sem contaminar a memoria permanente.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Nao consegui atualizar a memoria de voz.');
     } finally {
@@ -158,10 +268,11 @@ export default function BatchCreate() {
       setError('Escolha um expert.');
       return;
     }
-    if (mode === 'topic' && !topic.trim()) {
-      setError('Escreva um tema para gerar os angulos.');
+    if (mode === 'topic' && !topic.trim() && sourceItems.length === 0) {
+      setError('Escreva um tema ou adicione ao menos uma fonte para gerar os angulos.');
       return;
     }
+    startTimedStage('researcher', 'Researcher analisando fontes, Brand DNA e voz para montar a mesa de ideias.');
     setGenerating(true);
     setError('');
     setNotice('');
@@ -184,21 +295,26 @@ export default function BatchCreate() {
         voiceSamples: selectedProject.voice_samples,
         approvedExamples: approvedToExamples(approvedDrafts, selectedProject.id),
         voiceLearningNotes: selectedProject.voice_learning_notes,
+        sources: sourceItems,
       });
       setResearchItems(result.items);
       setSelectedIdeas(new Set(result.items.map((_, index) => index).filter((index) => result.items[index].quality_score >= 70)));
       setResearchSummary(result.topic_diagnosis);
       setNotice(`${result.items.length} ideias encontradas. Aprove as melhores antes de escrever os posts.`);
+      setStage('researcher');
+      setStageDetail('Mesa de ideias pronta. Aprove apenas as teses que merecem virar post.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Nao consegui gerar ideias agora.');
     } finally {
       setGenerating(false);
+      setStartedAt(null);
     }
   }
 
   async function handleWriteSelectedIdeas() {
     if (!selectedProject || selectedIdeas.size === 0) return;
     setWriting(true);
+    startTimedStage('copywriter', 'Copywriter escrevendo os posts aprovados. A revisao de voz vem junto para ganhar tempo.');
     setError('');
     setNotice('');
     setItems([]);
@@ -219,15 +335,25 @@ export default function BatchCreate() {
         voiceSamples: selectedProject.voice_samples,
         approvedExamples: approvedToExamples(approvedDrafts, selectedProject.id),
         voiceLearningNotes: selectedProject.voice_learning_notes,
-        onProgress: (done, total) => setProgress({ done, total }),
+        sources: sourceItems,
+        onProgress: (done, total, progressStage) => {
+          setProgress({ done, total });
+          if (progressStage === 'copywriter') {
+            setStage('copywriter');
+            setStageDetail(`Copywriter gerou ${done} de ${total}. Revisor de voz embutido na mesma etapa.`);
+          }
+        },
       });
       setItems(result.items);
       setKept(new Set());
       setNotice(`${result.items.length} posts escritos e revisados. Selecione os que devem ir para o board.`);
+      setStage('copywriter');
+      setStageDetail('Posts prontos para revisao humana. Nada sera salvo sem voce selecionar.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Nao consegui escrever os posts agora.');
     } finally {
       setWriting(false);
+      setStartedAt(null);
     }
   }
 
@@ -267,10 +393,12 @@ export default function BatchCreate() {
 
   async function handleSaveAll() {
     if (!selectedProject || kept.size === 0) return;
+    startTimedStage('board', 'Salvando os posts selecionados no Content Board.');
     setSaving(true);
     setError('');
     try {
       const batchId = (globalThis.crypto?.randomUUID?.() || `batch_${Date.now()}`);
+      const primarySource = sourceItems[0];
       const inputs = items
         .filter((_, index) => kept.has(index))
         .map((item) => ({
@@ -292,13 +420,27 @@ export default function BatchCreate() {
           voice_review_verdict: item.voice_review_verdict,
           voice_review_notes: item.voice_review_notes,
           batch_id: batchId,
+          source_type: primarySource?.type || ('manual' as const),
+          source_url: primarySource?.url || '',
+          source_title: primarySource?.title || topic.trim() || item.angle || item.title,
+          source_excerpt: primarySource?.text?.slice(0, 700) || '',
+          source_refs: sourceSummary,
         }));
-      await db.createContentDrafts(inputs);
+      const created = await db.createContentDrafts(inputs);
+      await Promise.all(created.map((draft) => db.createVoiceLearningEvent({
+        project_id: draft.project_id,
+        draft_id: draft.id,
+        event_type: 'approved',
+        format: draft.format,
+        after_text: draft.format === 'x_thread' ? draft.thread_items.join('\n\n') : draft.body,
+        instruction: 'Draft selecionado no lote e enviado para Para revisar no Content Board.',
+      })));
       navigate('/queue');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Nao consegui salvar os drafts.');
     } finally {
       setSaving(false);
+      setStartedAt(null);
     }
   }
 
@@ -319,6 +461,17 @@ export default function BatchCreate() {
 
       {error && <div className="rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-200">{error}</div>}
       {notice && <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4 text-sm text-emerald-200">{notice}</div>}
+
+      <PipelinePanel
+        stage={stage}
+        detail={stageDetail}
+        progress={progress}
+        elapsedSeconds={elapsedSeconds}
+        active={generating || writing || saving}
+        sourcesCount={sourceItems.length}
+        ideasCount={researchItems.length}
+        postsCount={items.length}
+      />
 
       <section className="premium-card space-y-5 p-6">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -356,6 +509,80 @@ export default function BatchCreate() {
             <input value={topic} onChange={(event) => setTopic(event.target.value)} placeholder="Ex: por que a maioria dos experts nao vende com conteudo" className={inputCls} />
           </div>
         )}
+
+        <div className="rounded-2xl border border-white/10 bg-white/[0.025] p-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <label className="premium-label">Fontes do lote</label>
+              <p className="mt-1 text-sm text-slate-500">Cole posts do X, links, transcricoes de YouTube ou notas. O Researcher usa isso para criar teses melhores.</p>
+            </div>
+            <span className="rounded-full border border-white/10 bg-black/30 px-3 py-1 text-xs font-bold text-slate-300">
+              {sourceItems.length} fonte{sourceItems.length === 1 ? '' : 's'}
+            </span>
+          </div>
+
+          <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-[220px_1fr]">
+            <div className="space-y-2">
+              <label className="premium-label">Tipo</label>
+              <select value={sourceKind} onChange={(event) => setSourceKind(event.target.value as SourceKind)} className={inputCls}>
+                {Object.entries(sourceKindLabels).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+              <input value={sourceTitle} onChange={(event) => setSourceTitle(event.target.value)} placeholder="Titulo opcional" className={inputCls} />
+              <input value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} placeholder="Link opcional" className={inputCls} />
+            </div>
+
+            <div className="space-y-2">
+              <label className="premium-label">Conteudo da fonte</label>
+              <textarea
+                rows={6}
+                value={sourceText}
+                onChange={(event) => setSourceText(event.target.value)}
+                placeholder={sourceKind === 'youtube'
+                  ? 'Cole a transcricao/resumo ou busque pela URL do YouTube.'
+                  : sourceKind === 'x_post'
+                    ? 'Cole aqui o texto do post do X que voce encontrou.'
+                    : 'Cole notas, contexto, bullets, exemplos ou transcricao.'}
+                className={`${inputCls} resize-none`}
+              />
+              {sourceError && <p className="text-xs text-amber-200">{sourceError}</p>}
+              <div className="flex flex-wrap gap-2">
+                {sourceKind === 'youtube' && (
+                  <button type="button" onClick={handleLoadYouTubeSource} disabled={loadingSource || !sourceUrl.trim()} className="inline-flex items-center gap-2 rounded-xl border border-red-400/20 bg-red-500/10 px-3 py-2 text-xs font-bold text-red-100 transition hover:bg-red-500/15 disabled:opacity-50">
+                    {loadingSource ? <Loader2 className="h-4 w-4 animate-spin" /> : <Youtube className="h-4 w-4" />}
+                    Buscar transcricao
+                  </button>
+                )}
+                <button type="button" onClick={() => addSourceItem()} className="inline-flex items-center gap-2 rounded-xl border border-emerald-400/20 bg-emerald-500/10 px-3 py-2 text-xs font-bold text-emerald-100 transition hover:bg-emerald-500/15">
+                  <Plus className="h-4 w-4" /> Adicionar fonte
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {sourceItems.length > 0 && (
+            <div className="mt-4 grid grid-cols-1 gap-2 md:grid-cols-2">
+              {sourceItems.map((source, index) => (
+                <div key={`${source.type}-${index}`} className="rounded-xl border border-white/10 bg-black/30 p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-widest text-indigo-300">
+                        {source.type === 'youtube' ? <Youtube className="h-3.5 w-3.5" /> : source.type === 'x_url' ? <Link2 className="h-3.5 w-3.5" /> : <FileText className="h-3.5 w-3.5" />}
+                        {sourceKindLabels[source.type]}
+                      </div>
+                      <p className="mt-1 truncate text-sm font-bold text-white">{source.title || source.url || 'Fonte sem titulo'}</p>
+                      <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-slate-500">{source.text || source.url}</p>
+                    </div>
+                    <button type="button" onClick={() => removeSourceItem(index)} className="rounded-lg border border-white/10 bg-white/[0.03] px-2 py-1 text-xs font-bold text-slate-300 transition hover:bg-white/[0.08]">
+                      Remover
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div className="space-y-2">
@@ -483,6 +710,7 @@ export default function BatchCreate() {
             })}
           </div>
 
+          {items.length === 0 && (
           <div className="sticky bottom-4 z-20 rounded-2xl border border-white/10 bg-[#101018]/95 p-4 shadow-2xl shadow-black/40 backdrop-blur">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
@@ -495,6 +723,7 @@ export default function BatchCreate() {
               </button>
             </div>
           </div>
+          )}
         </section>
       )}
 
@@ -582,5 +811,82 @@ export default function BatchCreate() {
         </div>
       )}
     </div>
+  );
+}
+
+function PipelinePanel({
+  stage,
+  detail,
+  progress,
+  elapsedSeconds,
+  active,
+  sourcesCount,
+  ideasCount,
+  postsCount,
+}: {
+  stage: PipelineStage;
+  detail: string;
+  progress: { done: number; total: number };
+  elapsedSeconds: number;
+  active: boolean;
+  sourcesCount: number;
+  ideasCount: number;
+  postsCount: number;
+}) {
+  const steps: Array<{ id: PipelineStage; label: string; metric: string }> = [
+    { id: 'brief', label: 'Brief', metric: 'Expert e objetivo' },
+    { id: 'sources', label: 'Fontes', metric: `${sourcesCount} adicionada${sourcesCount === 1 ? '' : 's'}` },
+    { id: 'researcher', label: 'Mesa de ideias', metric: ideasCount ? `${ideasCount} ideias` : 'Aguardando' },
+    { id: 'copywriter', label: 'Posts gerados', metric: postsCount ? `${postsCount} posts` : progress.total ? `${progress.done}/${progress.total}` : 'Aguardando' },
+    { id: 'board', label: 'Board', metric: 'Para revisar' },
+  ];
+  const currentIndex = Math.max(0, steps.findIndex((step) => step.id === stage));
+
+  return (
+    <section className="premium-card overflow-hidden">
+      <div className="grid grid-cols-1 border-b border-white/5 md:grid-cols-5">
+        {steps.map((step, index) => {
+          const done = index < currentIndex || (step.id === 'researcher' && ideasCount > 0) || (step.id === 'copywriter' && postsCount > 0);
+          const current = index === currentIndex;
+          return (
+            <div key={step.id} className={`border-white/5 p-4 md:border-r ${current ? 'bg-indigo-500/10' : done ? 'bg-emerald-500/[0.05]' : 'bg-white/[0.01]'}`}>
+              <div className="flex items-center gap-2">
+                <span className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-black ${done ? 'bg-emerald-400 text-slate-950' : current ? 'bg-indigo-300 text-slate-950' : 'bg-white/10 text-slate-400'}`}>
+                  {done ? <Check className="h-4 w-4" /> : index + 1}
+                </span>
+                <p className="text-sm font-black text-white">{step.label}</p>
+              </div>
+              <p className="mt-2 text-xs text-slate-500">{step.metric}</p>
+            </div>
+          );
+        })}
+      </div>
+      <div className="flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-full border border-white/10 bg-black/30 px-3 py-1 text-[11px] font-black uppercase tracking-widest text-indigo-200">
+              {active ? 'Em andamento' : 'Pronto'}
+            </span>
+            {active && (
+              <span className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-400">
+                <Clock3 className="h-3.5 w-3.5" /> {elapsedSeconds}s
+              </span>
+            )}
+          </div>
+          <p className="mt-2 text-sm leading-relaxed text-slate-300">{detail}</p>
+        </div>
+        {progress.total > 0 && active && (
+          <div className="min-w-[180px]">
+            <div className="flex items-center justify-between text-xs font-bold text-slate-400">
+              <span>Progresso</span>
+              <span>{progress.done}/{progress.total}</span>
+            </div>
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10">
+              <div className="h-full rounded-full bg-gradient-to-r from-indigo-300 to-emerald-300 transition-all" style={{ width: `${Math.max(8, Math.round((progress.done / progress.total) * 100))}%` }} />
+            </div>
+          </div>
+        )}
+      </div>
+    </section>
   );
 }

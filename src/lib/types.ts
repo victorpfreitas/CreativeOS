@@ -230,6 +230,11 @@ export interface ContentDraft {
   voice_review_verdict?: 'pass' | 'needs_review' | 'reject';
   voice_review_notes?: string;
   batch_id?: string;
+  source_type?: 'manual' | 'x_post' | 'x_url' | 'youtube' | 'transcript' | 'notes';
+  source_url?: string;
+  source_title?: string;
+  source_excerpt?: string;
+  source_refs?: string[];
   created_at: string;
   updated_at: string;
   // Joined fields
@@ -240,7 +245,7 @@ export interface VoiceLearningEvent {
   id: string;
   project_id: string;
   draft_id?: string;
-  event_type: 'approved' | 'edited' | 'regenerated' | 'scheduled';
+  event_type: 'approved' | 'edited' | 'regenerated' | 'scheduled' | 'rejected_voice' | 'used_as_reference';
   format?: ContentDraft['format'];
   before_text?: string;
   after_text?: string;
@@ -314,6 +319,11 @@ export interface CreateContentDraftInput {
   voice_review_verdict?: ContentDraft['voice_review_verdict'];
   voice_review_notes?: string;
   batch_id?: string;
+  source_type?: ContentDraft['source_type'];
+  source_url?: string;
+  source_title?: string;
+  source_excerpt?: string;
+  source_refs?: string[];
 }
 
 export interface CreateAutomationInput {

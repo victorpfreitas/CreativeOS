@@ -13,7 +13,7 @@ export default async function handler(req: any, res: any) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { prompt, models, providerOrder } = req.body || {};
+  const { prompt, models, providerOrder, maxOpenRouterModels, openRouterTimeoutMs, skipGemini } = req.body || {};
   if (!prompt || typeof prompt !== 'string') {
     return res.status(400).json({ error: 'Missing prompt' });
   }
@@ -25,6 +25,9 @@ export default async function handler(req: any, res: any) {
     const { text } = await generateAiText(prompt, {
       openRouterModels: models,
       providerOrder: providerOrder === 'openrouter_first' ? 'openrouter_first' : 'default',
+      maxOpenRouterModels: Number(maxOpenRouterModels) || undefined,
+      openRouterTimeoutMs: Number(openRouterTimeoutMs) || undefined,
+      skipGemini: Boolean(skipGemini),
     });
     return res.status(200).json({ text });
   } catch (err: any) {

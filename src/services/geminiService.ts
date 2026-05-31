@@ -15,10 +15,16 @@ import type {
 import { getExpertContentPreset } from '../lib/contentPresets';
 import { loadOpenRouterModels } from '../lib/aiSettings';
 
-async function callAI(prompt: string, options?: { providerOrder?: 'default' | 'openrouter_first' }): Promise<string> {
+async function callAI(prompt: string, options?: {
+  providerOrder?: 'default' | 'openrouter_first';
+  maxOpenRouterModels?: number;
+  openRouterTimeoutMs?: number;
+  skipGemini?: boolean;
+  clientTimeoutMs?: number;
+}): Promise<string> {
   const controller = new AbortController();
   // Allow extra time: the server may cascade through several OpenRouter models.
-  const timeout = window.setTimeout(() => controller.abort(), 120000);
+  const timeout = window.setTimeout(() => controller.abort(), options?.clientTimeoutMs || 120000);
 
   // Pull the user-configured OpenRouter model list (empty => server default).
   const models = await loadOpenRouterModels().catch(() => [] as string[]);
@@ -27,7 +33,14 @@ async function callAI(prompt: string, options?: { providerOrder?: 'default' | 'o
     const response = await fetch('/api/ai', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, models, providerOrder: options?.providerOrder }),
+      body: JSON.stringify({
+        prompt,
+        models,
+        providerOrder: options?.providerOrder,
+        maxOpenRouterModels: options?.maxOpenRouterModels,
+        openRouterTimeoutMs: options?.openRouterTimeoutMs,
+        skipGemini: options?.skipGemini,
+      }),
       signal: controller.signal,
     });
 
@@ -43,7 +56,7 @@ async function callAI(prompt: string, options?: { providerOrder?: 'default' | 'o
     return data.text;
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') {
-      throw new Error('A IA demorou demais para responder. Tente novamente com um brief mais curto.');
+      throw new Error('A IA demorou demais para responder. Tente novamente com menos posts ou menos fontes neste lote.');
     }
     throw err;
   } finally {
@@ -436,7 +449,7 @@ ${guide}`;
 function buildBatchSourceContext(sources?: XBatchSource[]): string {
   const cleaned = (sources || [])
     .map((source, index) => {
-      const text = limitText(source.text, 1800);
+      const text = limitText(source.text, 900);
       const parts = [
         `Fonte ${index + 1} (${source.type})`,
         source.title ? `Titulo: ${source.title}` : '',
@@ -446,12 +459,20 @@ function buildBatchSourceContext(sources?: XBatchSource[]): string {
       return parts.length > 1 ? parts.join('\n') : '';
     })
     .filter(Boolean)
-    .slice(0, 8);
+    .slice(0, 4);
 
   if (!cleaned.length) return '';
   return `Source material provided by the operator. Use it to extract theses, tensions, examples, objections, and vocabulary. Do not merely summarize it:
 ${cleaned.join('\n\n')}`;
 }
+
+const FAST_BATCH_AI_OPTIONS = {
+  providerOrder: 'openrouter_first' as const,
+  maxOpenRouterModels: 2,
+  openRouterTimeoutMs: 18000,
+  skipGemini: true,
+  clientTimeoutMs: 65000,
+};
 
 function pickBatchFormat(formatMix: 'x_post' | 'x_thread' | 'mixed', index: number): ContentDraft['format'] {
   if (formatMix === 'mixed') return index % 3 === 2 ? 'x_thread' : 'x_post';
@@ -554,7 +575,7 @@ Return ONLY valid JSON with this exact structure:
 
 Generate ${count} items. Write in pt-BR.`;
 
-  const text = await callAI(prompt, { providerOrder: 'openrouter_first' });
+  const text = await callAI(prompt, FAST_BATCH_AI_OPTIONS);
   const raw = parseAIJson<Partial<XResearchPlan>>(text, 'plano de pesquisa do lote');
   const items = (Array.isArray(raw.items) ? raw.items : [])
     .map((item, index) => normalizeResearchItem(item, index, formatMix))
@@ -700,7 +721,7 @@ Return ONLY a JSON array of ${chunkSpec.length} objects with this exact structur
 ]`;
 
     try {
-      const text = await callAI(expandPrompt, { providerOrder: 'openrouter_first' });
+      const text = await callAI(expandPrompt, FAST_BATCH_AI_OPTIONS);
       const raw = parseAIJsonArray<Partial<XContentDraftResult & Pick<XBatchItem, 'voice_review_score' | 'voice_review_verdict' | 'voice_review_notes'>>>(text, 'copy do lote para X');
       raw.forEach((entry, indexInChunk) => {
         const spec = chunkSpec[indexInChunk] || chunkSpec[chunkSpec.length - 1];

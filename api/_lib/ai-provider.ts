@@ -48,10 +48,18 @@ export function cleanJsonText(text: string) {
   return text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
 }
 
-export async function generateAiText(prompt: string, options?: { openRouterModels?: string[]; providerOrder?: 'default' | 'openrouter_first' }) {
+export async function generateAiText(prompt: string, options?: {
+  openRouterModels?: string[];
+  providerOrder?: 'default' | 'openrouter_first';
+  maxOpenRouterModels?: number;
+  openRouterTimeoutMs?: number;
+  skipGemini?: boolean;
+}) {
   const providerErrors: string[] = [];
-  const openRouterModels = sanitizeModels(options?.openRouterModels, OPENROUTER_ENV_MODELS);
+  const openRouterModels = sanitizeModels(options?.openRouterModels, OPENROUTER_ENV_MODELS)
+    .slice(0, Math.max(1, Math.min(4, Math.round(options?.maxOpenRouterModels || 4))));
   const openRouterFirst = options?.providerOrder === 'openrouter_first';
+  const openRouterTimeoutMs = Math.max(8000, Math.min(OPENROUTER_TIMEOUT_MS, Number(options?.openRouterTimeoutMs) || OPENROUTER_TIMEOUT_MS));
 
   async function tryOpenRouter() {
     if (!OPENROUTER_API_KEY) return null;
@@ -72,7 +80,7 @@ export async function generateAiText(prompt: string, options?: { openRouterModel
               content: `${prompt}\n\nIMPORTANT: Return ONLY valid JSON when JSON is requested. Do not use markdown code blocks.`,
             }],
           }),
-        }, OPENROUTER_TIMEOUT_MS);
+        }, openRouterTimeoutMs);
 
         if (!response.ok) {
           providerErrors.push(await providerStatusError(`OpenRouter[${model}]`, response));
@@ -98,6 +106,10 @@ export async function generateAiText(prompt: string, options?: { openRouterModel
   }
 
   async function tryGemini() {
+    if (options?.skipGemini) {
+      providerErrors.push('Gemini skipped for this request');
+      return null;
+    }
     if (!GEMINI_API_KEY) {
       providerErrors.push('Gemini key is not configured');
       return null;
@@ -136,6 +148,7 @@ export async function generateAiText(prompt: string, options?: { openRouterModel
     if (openRouterResult) return openRouterResult;
     const geminiResult = await tryGemini();
     if (geminiResult) return geminiResult;
+    throw new Error(providerErrors.join(' | ') || 'Nenhum provedor de IA retornou conteudo.');
   } else {
     const geminiResult = await tryGemini();
     if (geminiResult) return geminiResult;

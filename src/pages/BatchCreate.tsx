@@ -587,7 +587,8 @@ export default function BatchCreate() {
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div className="space-y-2">
             <label className="premium-label">Quantidade ({count})</label>
-            <input type="range" min={1} max={30} value={count} onChange={(event) => setCount(Number(event.target.value))} className="w-full accent-indigo-500" />
+            <input type="range" min={1} max={12} value={count} onChange={(event) => setCount(Number(event.target.value))} className="w-full accent-indigo-500" />
+            <p className="text-xs text-slate-500">Para evitar espera longa, gere ate 12 por rodada e salve os melhores.</p>
           </div>
           <div className="space-y-2">
             <label className="premium-label">Formato</label>

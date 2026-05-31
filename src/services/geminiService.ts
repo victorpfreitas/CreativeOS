@@ -374,7 +374,7 @@ Return ONLY a valid JSON object with this exact structure:
 
 // ---- Generate X Content Batch ----
 
-const BATCH_CHUNK_SIZE = 4;
+const BATCH_CHUNK_SIZE = 2;
 
 export interface XBatchItem extends XContentDraftResult {
   angle: string;
@@ -468,10 +468,10 @@ ${cleaned.join('\n\n')}`;
 
 const FAST_BATCH_AI_OPTIONS = {
   providerOrder: 'openrouter_first' as const,
-  maxOpenRouterModels: 2,
-  openRouterTimeoutMs: 18000,
+  maxOpenRouterModels: 1,
+  openRouterTimeoutMs: 12000,
   skipGemini: true,
-  clientTimeoutMs: 65000,
+  clientTimeoutMs: 35000,
 };
 
 function pickBatchFormat(formatMix: 'x_post' | 'x_thread' | 'mixed', index: number): ContentDraft['format'] {
@@ -512,6 +512,88 @@ function dedupeAngles(angles: string[], count: number): string[] {
     if (result.length >= count) break;
   }
   return result;
+}
+
+function sourceSeedText(sources?: XBatchSource[]): string {
+  const source = sources?.find((item) => compactText(item.text) || compactText(item.title)) || sources?.[0];
+  return limitText(source?.text || source?.title || source?.url || '', 220);
+}
+
+function fallbackResearchPlan(params: {
+  topic?: string;
+  count: number;
+  formatMix: 'x_post' | 'x_thread' | 'mixed';
+  sources?: XBatchSource[];
+}): XResearchPlan {
+  const seed = sourceSeedText(params.sources);
+  const base = compactText(params.topic) || seed || 'autoridade, IA e conteudo';
+  const frames = [
+    ['diagnosis', `O problema real por tras de ${base}`, `A maioria discute a ferramenta, mas a decisao importante e o criterio de uso.`],
+    ['mistake', `O erro mais comum em ${base}`, `O atalho parece produtividade, mas costuma gerar retrabalho e conteudo generico.`],
+    ['framework', `Um criterio simples para decidir sobre ${base}`, `Separar contexto, objetivo e execucao deixa a tecnologia mais util.`],
+    ['contrarian', `O que quase ninguem fala sobre ${base}`, `Mais volume nao resolve quando a tese ainda esta fraca.`],
+    ['tactical', `Como aplicar ${base} sem virar conteudo raso`, `O ganho vem de transformar fonte bruta em ponto de vista claro.`],
+    ['proof', `Um sinal de que ${base} esta funcionando`, `Quando o conteudo gera conversa qualificada, a ideia saiu do obvio.`],
+    ['story', `Uma situacao pratica envolvendo ${base}`, `O bastidor ajuda a mostrar criterio sem soar como aula generica.`],
+  ] as const;
+
+  const items = Array.from({ length: params.count }, (_, index) => {
+    const frame = frames[index % frames.length];
+    return normalizeResearchItem({
+      angle: frame[1],
+      thesis: frame[2],
+      why_it_matters: 'Serve para transformar insumo bruto em posicionamento de autoridade, nao apenas em mais um post.',
+      conversation_trigger: 'Fazer a pessoa comparar volume de conteudo com clareza de ponto de vista.',
+      content_job: frame[0],
+      best_format: pickBatchFormat(params.formatMix, index),
+      quality_score: 62,
+      risk_flags: ['Fallback sem IA completa; revisar especificidade antes de salvar'],
+      source_note: seed || 'Gerado a partir do tema e do Brand DNA disponivel.',
+    }, index, params.formatMix);
+  });
+
+  return {
+    topic_diagnosis: 'A IA demorou para responder, entao montei uma mesa inicial em modo fallback para voce nao perder o fluxo.',
+    audience_tensions: ['Quer produzir mais, mas sem sacrificar voz e criterio.'],
+    beliefs_to_challenge: ['Mais posts nao compensam uma tese fraca.'],
+    items,
+  };
+}
+
+function fallbackDraftFromResearch(item: XResearchItem, format: ContentDraft['format'], index: number): XBatchItem {
+  const thesis = limitText(item.thesis || item.angle, 240);
+  const body = limitText(`${thesis} O ponto nao e postar mais. E ter uma ideia clara o bastante para alguem concordar, discordar ou lembrar de voce depois.`, 270);
+  const threadItems = [
+    limitText(item.angle, 270),
+    limitText(thesis, 270),
+    limitText(item.why_it_matters || 'Sem criterio, a ferramenta so aumenta o volume do que ja estava generico.', 270),
+    limitText(item.conversation_trigger || 'A pergunta util: isso cria conversa qualificada ou so ocupa calendario?', 270),
+  ];
+
+  return {
+    title: limitText(item.angle || `Post ${index + 1}`, 90),
+    hook: limitText(item.angle || thesis, 270),
+    body: format === 'x_thread' ? '' : body,
+    thread_items: format === 'x_thread' ? threadItems : [],
+    objective: 'Fallback gerado para manter o lote andando quando a IA demorou demais.',
+    variants: [
+      limitText(`O problema nao e falta de conteudo. E falta de tese sobre ${item.angle}`, 270),
+      limitText(`Mais volume nao corrige uma ideia fraca: ${thesis}`, 270),
+      limitText(`Antes de postar mais, eu olharia para isso: ${item.angle}`, 270),
+    ],
+    voice_notes_used: 'Modo fallback: revisar voz e especificidade antes de aprovar.',
+    angle: item.angle,
+    format,
+    research_thesis: item.thesis,
+    research_context: compactText([
+      item.why_it_matters ? `Por que importa: ${item.why_it_matters}` : '',
+      item.conversation_trigger ? `Gatilho de conversa: ${item.conversation_trigger}` : '',
+      item.source_note ? `Fonte/insight: ${item.source_note}` : '',
+    ].filter(Boolean).join('\n')),
+    voice_review_score: 45,
+    voice_review_verdict: 'needs_review',
+    voice_review_notes: 'Fallback local porque a IA demorou demais. Use como rascunho, nao como versao final.',
+  };
 }
 
 export async function generateXResearchPlan(params: XBatchBaseParams): Promise<XResearchPlan> {
@@ -575,21 +657,25 @@ Return ONLY valid JSON with this exact structure:
 
 Generate ${count} items. Write in pt-BR.`;
 
-  const text = await callAI(prompt, FAST_BATCH_AI_OPTIONS);
-  const raw = parseAIJson<Partial<XResearchPlan>>(text, 'plano de pesquisa do lote');
-  const items = (Array.isArray(raw.items) ? raw.items : [])
-    .map((item, index) => normalizeResearchItem(item, index, formatMix))
-    .filter((item) => item.angle && item.thesis)
-    .slice(0, count);
+  try {
+    const text = await callAI(prompt, FAST_BATCH_AI_OPTIONS);
+    const raw = parseAIJson<Partial<XResearchPlan>>(text, 'plano de pesquisa do lote');
+    const items = (Array.isArray(raw.items) ? raw.items : [])
+      .map((item, index) => normalizeResearchItem(item, index, formatMix))
+      .filter((item) => item.angle && item.thesis)
+      .slice(0, count);
 
-  if (items.length === 0) throw new Error('Nao consegui gerar ideias boas para o lote. Tente ajustar o tema.');
+    if (items.length === 0) return fallbackResearchPlan({ topic, count, formatMix, sources });
 
-  return {
-    topic_diagnosis: compactText(raw.topic_diagnosis),
-    audience_tensions: Array.isArray(raw.audience_tensions) ? raw.audience_tensions.map((item) => limitText(item, 160)).filter(Boolean).slice(0, 5) : [],
-    beliefs_to_challenge: Array.isArray(raw.beliefs_to_challenge) ? raw.beliefs_to_challenge.map((item) => limitText(item, 160)).filter(Boolean).slice(0, 5) : [],
-    items,
-  };
+    return {
+      topic_diagnosis: compactText(raw.topic_diagnosis),
+      audience_tensions: Array.isArray(raw.audience_tensions) ? raw.audience_tensions.map((item) => limitText(item, 160)).filter(Boolean).slice(0, 5) : [],
+      beliefs_to_challenge: Array.isArray(raw.beliefs_to_challenge) ? raw.beliefs_to_challenge.map((item) => limitText(item, 160)).filter(Boolean).slice(0, 5) : [],
+      items,
+    };
+  } catch {
+    return fallbackResearchPlan({ topic, count, formatMix, sources });
+  }
 }
 
 export async function reviewXDraftVoice(params: {
@@ -747,6 +833,9 @@ Return ONLY a JSON array of ${chunkSpec.length} objects with this exact structur
       });
     } catch {
       failedChunks += 1;
+      chunkSpec.forEach((spec, indexInChunk) => {
+        items.push(fallbackDraftFromResearch(spec, spec.format, chunkIndex * BATCH_CHUNK_SIZE + indexInChunk));
+      });
     }
 
     onProgress?.(Math.min(items.length, count), count, 'copywriter');

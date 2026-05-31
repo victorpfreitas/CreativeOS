@@ -300,7 +300,10 @@ export default function BatchCreate() {
       setResearchItems(result.items);
       setSelectedIdeas(new Set(result.items.map((_, index) => index).filter((index) => result.items[index].quality_score >= 70)));
       setResearchSummary(result.topic_diagnosis);
-      setNotice(`${result.items.length} ideias encontradas. Aprove as melhores antes de escrever os posts.`);
+      const fallbackIdeas = result.items.filter((item) => item.risk_flags.some((flag) => flag.toLowerCase().includes('fallback'))).length;
+      setNotice(fallbackIdeas > 0
+        ? `${result.items.length} ideias montadas em modo fallback porque a IA demorou. Revise as melhores antes de escrever.`
+        : `${result.items.length} ideias encontradas. Aprove as melhores antes de escrever os posts.`);
       setStage('researcher');
       setStageDetail('Mesa de ideias pronta. Aprove apenas as teses que merecem virar post.');
     } catch (err) {
@@ -346,7 +349,10 @@ export default function BatchCreate() {
       });
       setItems(result.items);
       setKept(new Set());
-      setNotice(`${result.items.length} posts escritos e revisados. Selecione os que devem ir para o board.`);
+      const fallbackPosts = result.items.filter((item) => item.voice_review_notes?.toLowerCase().includes('fallback')).length;
+      setNotice(fallbackPosts > 0
+        ? `${result.items.length} posts prontos, sendo ${fallbackPosts} em modo fallback por timeout da IA. Selecione apenas os que valem revisar no board.`
+        : `${result.items.length} posts escritos e revisados. Selecione os que devem ir para o board.`);
       setStage('copywriter');
       setStageDetail('Posts prontos para revisao humana. Nada sera salvo sem voce selecionar.');
     } catch (err) {

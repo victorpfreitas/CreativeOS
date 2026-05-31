@@ -1,5 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Layers, Loader2, Sparkles, Check, AlertTriangle, Save, Wand2 } from 'lucide-react';
+import {
+  AlertTriangle,
+  Check,
+  CheckSquare,
+  Layers,
+  Loader2,
+  Minus,
+  Plus,
+  Save,
+  Sparkles,
+  Square,
+  Wand2,
+} from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import type { ContentDraft, Project } from '../lib/types';
 import * as db from '../lib/database';
@@ -15,6 +27,12 @@ function draftPreviewText(item: XBatchItem) {
   return item.format === 'x_thread'
     ? item.thread_items.map((text, index) => `${index + 1}/${item.thread_items.length}  ${text}`).join('\n\n')
     : item.body;
+}
+
+function draftCharCount(item: XBatchItem) {
+  return item.format === 'x_thread'
+    ? item.thread_items.map((text) => text.length).join(' / ')
+    : String(item.body.length);
 }
 
 function approvedToExamples(drafts: ContentDraft[], projectId: string): string[] {
@@ -157,13 +175,13 @@ export default function BatchCreate() {
         onProgress: (done, total) => setProgress({ done, total }),
       });
       setItems(result.items);
-      setKept(new Set(result.items.map((_, index) => index)));
+      setKept(new Set());
       if (result.items.length === 0) {
         setError('A IA nao retornou nenhum draft. Tente novamente.');
       } else if (result.failedChunks > 0) {
-        setNotice(`Geramos ${result.items.length} de ${result.requested}. Alguns lotes falharam — voce pode salvar estes e gerar o resto depois.`);
+        setNotice(`Geramos ${result.items.length} de ${result.requested}. Alguns lotes falharam, mas tentamos completar automaticamente. Revise antes de salvar.`);
       } else {
-        setNotice(`${result.items.length} drafts gerados. Revise e salve os que quiser.`);
+        setNotice(`${result.items.length} drafts gerados. Selecione os que quiser salvar no board.`);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Nao consegui gerar o lote agora.');
@@ -179,6 +197,14 @@ export default function BatchCreate() {
       else next.add(index);
       return next;
     });
+  }
+
+  function selectAllItems() {
+    setKept(new Set(items.map((_, index) => index)));
+  }
+
+  function clearSelection() {
+    setKept(new Set());
   }
 
   async function handleSaveAll() {
@@ -214,7 +240,7 @@ export default function BatchCreate() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6 py-4">
+    <div className="mx-auto max-w-5xl space-y-6 pb-28 pt-4">
       <header className="flex items-start gap-4">
         <div className="rounded-xl border border-white/10 bg-white/[0.03] p-2.5 text-indigo-300">
           <Layers className="h-5 w-5" />
@@ -224,14 +250,14 @@ export default function BatchCreate() {
             <Sparkles className="h-4 w-4" /> Content Machine
           </div>
           <h1 className="mt-2 text-3xl font-bold tracking-tight text-white">Gerar posts para X em lote</h1>
-          <p className="mt-1 text-sm text-slate-500">Gere vários drafts de uma vez, revise e aprove no board.</p>
+          <p className="mt-1 text-sm text-slate-500">Gere varios drafts de uma vez, revise e aprove no board.</p>
         </div>
       </header>
 
       {error && <div className="rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-200">{error}</div>}
       {notice && <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4 text-sm text-emerald-200">{notice}</div>}
 
-      <section className="premium-card p-6 space-y-5">
+      <section className="premium-card space-y-5 p-6">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div className="space-y-2">
             <label className="premium-label">Expert</label>
@@ -243,7 +269,7 @@ export default function BatchCreate() {
             </select>
             {selectedProject && !selectedProject.voice_samples?.length && (
               <p className="flex items-center gap-1.5 text-xs text-amber-300/80">
-                <AlertTriangle className="h-3.5 w-3.5" /> Sem posts reais cadastrados — o tom fica mais genérico. Adicione amostras no Expert.
+                <AlertTriangle className="h-3.5 w-3.5" /> Sem posts reais cadastrados. O tom fica mais generico. Adicione amostras no Expert.
               </p>
             )}
           </div>
@@ -255,7 +281,7 @@ export default function BatchCreate() {
                 Pilares + Brand DNA
               </button>
               <button type="button" onClick={() => setMode('topic')} className={`rounded-xl border p-3 text-left text-sm font-bold transition ${mode === 'topic' ? 'border-indigo-400 bg-indigo-500/10 text-white' : 'border-white/10 bg-white/[0.02] text-slate-300 hover:bg-white/[0.04]'}`}>
-                Tema → N ângulos
+                Tema para N angulos
               </button>
             </div>
           </div>
@@ -264,7 +290,7 @@ export default function BatchCreate() {
         {mode === 'topic' && (
           <div className="space-y-2">
             <label className="premium-label">Tema</label>
-            <input value={topic} onChange={(event) => setTopic(event.target.value)} placeholder="Ex: por que a maioria dos experts não vende com conteúdo" className={inputCls} />
+            <input value={topic} onChange={(event) => setTopic(event.target.value)} placeholder="Ex: por que a maioria dos experts nao vende com conteudo" className={inputCls} />
           </div>
         )}
 
@@ -277,8 +303,8 @@ export default function BatchCreate() {
             <label className="premium-label">Formato</label>
             <select value={formatMix} onChange={(event) => setFormatMix(event.target.value as FormatMix)} className={inputCls}>
               <option value="mixed">Misto (posts + threads)</option>
-              <option value="x_post">Só posts únicos</option>
-              <option value="x_thread">Só threads</option>
+              <option value="x_post">So posts unicos</option>
+              <option value="x_thread">So threads</option>
             </select>
           </div>
         </div>
@@ -336,30 +362,46 @@ export default function BatchCreate() {
       </section>
 
       {items.length > 0 && (
-        <section className="premium-card p-6 space-y-4">
-          <div className="flex items-center justify-between">
+        <section className="premium-card space-y-4 p-6">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
-              <p className="premium-label">Pré-visualização</p>
-              <p className="mt-1 text-sm text-slate-500">{kept.size} de {items.length} selecionados para salvar.</p>
+              <p className="premium-label">Revisao do lote</p>
+              <p className="mt-1 text-sm text-slate-500">Escolha somente os posts que valem ir para o board.</p>
             </div>
-            <button onClick={handleSaveAll} disabled={saving || kept.size === 0} className="premium-button-primary flex items-center gap-2 disabled:opacity-50">
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-              Salvar selecionados
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={selectAllItems} className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-bold text-slate-200 transition hover:bg-white/[0.08]">
+                <CheckSquare className="h-4 w-4" /> Selecionar todos
+              </button>
+              <button type="button" onClick={clearSelection} className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-bold text-slate-200 transition hover:bg-white/[0.08]">
+                <Square className="h-4 w-4" /> Limpar
+              </button>
+            </div>
           </div>
 
           <div className="space-y-3">
-            {items.map((item, index) => (
-              <div key={index} className={`block rounded-2xl border p-4 transition ${kept.has(index) ? 'border-indigo-400/40 bg-indigo-500/[0.06]' : 'border-white/10 bg-black/20 opacity-60'}`}>
-                <div className="flex items-start gap-3">
-                  <input type="checkbox" checked={kept.has(index)} onChange={() => toggleKeep(index)} className="mt-1 h-4 w-4 accent-indigo-500" />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-widest text-indigo-300">
-                      <span>{item.format === 'x_thread' ? 'Thread' : 'Post'}</span>
-                      {item.angle && <span className="truncate text-slate-500 normal-case font-medium tracking-normal">· {item.angle}</span>}
+            {items.map((item, index) => {
+              const selected = kept.has(index);
+              return (
+                <div key={index} className={`rounded-2xl border p-4 transition ${selected ? 'border-emerald-400/50 bg-emerald-500/[0.08]' : 'border-white/10 bg-black/20'}`}>
+                  <div className="flex flex-col gap-3">
+                    <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2 text-[11px] font-black uppercase tracking-widest text-indigo-300">
+                          <span>{item.format === 'x_thread' ? 'Thread' : 'Post'}</span>
+                          <span className="rounded-full bg-white/[0.04] px-2 py-0.5 text-slate-400 normal-case tracking-normal">{draftCharCount(item)} caracteres</span>
+                          {selected && <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-emerald-200 normal-case tracking-normal">Selecionado</span>}
+                        </div>
+                        {item.angle && <p className="mt-1 text-xs font-medium leading-relaxed text-slate-500">{item.angle}</p>}
+                      </div>
+                      <button type="button" onClick={() => toggleKeep(index)} className={`inline-flex shrink-0 items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-bold transition ${selected ? 'bg-emerald-500 text-white hover:bg-emerald-400' : 'border border-white/10 bg-white/[0.04] text-slate-200 hover:bg-white/[0.08]'}`}>
+                        {selected ? <Minus className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+                        {selected ? 'Remover' : 'Selecionar'}
+                      </button>
                     </div>
-                    <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-200">{draftPreviewText(item)}</p>
-                    <div className="mt-4 flex flex-wrap gap-2">
+
+                    <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-100">{draftPreviewText(item)}</p>
+
+                    <div className="flex flex-wrap gap-2">
                       <button type="button" onClick={() => handleLearnFromItem(index, 'good')} disabled={Boolean(learningIndex)} className="inline-flex items-center gap-2 rounded-lg border border-emerald-400/20 bg-emerald-500/10 px-3 py-1.5 text-xs font-bold text-emerald-200 transition hover:bg-emerald-500/15 disabled:opacity-50">
                         {learningIndex === `good:${index}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
                         Usar como referencia
@@ -371,10 +413,25 @@ export default function BatchCreate() {
                     </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </section>
+      )}
+
+      {items.length > 0 && (
+        <div className="sticky bottom-4 z-20 rounded-2xl border border-white/10 bg-[#101018]/95 p-4 shadow-2xl shadow-black/40 backdrop-blur">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-sm font-black text-white">{kept.size} de {items.length} selecionados</p>
+              <p className="mt-0.5 text-xs text-slate-500">Nada e salvo ate voce confirmar aqui.</p>
+            </div>
+            <button onClick={handleSaveAll} disabled={saving || kept.size === 0} className="premium-button-primary flex items-center justify-center gap-2 disabled:opacity-50">
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+              Salvar selecionados no board
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

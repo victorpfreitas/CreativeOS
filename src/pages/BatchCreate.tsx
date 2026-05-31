@@ -295,6 +295,7 @@ export default function BatchCreate() {
         voiceSamples: selectedProject.voice_samples,
         approvedExamples: approvedToExamples(approvedDrafts, selectedProject.id),
         voiceLearningNotes: selectedProject.voice_learning_notes,
+        voiceProfile: selectedProject.voice_profile,
         sources: sourceItems,
       });
       setResearchItems(result.items);
@@ -338,6 +339,7 @@ export default function BatchCreate() {
         voiceSamples: selectedProject.voice_samples,
         approvedExamples: approvedToExamples(approvedDrafts, selectedProject.id),
         voiceLearningNotes: selectedProject.voice_learning_notes,
+        voiceProfile: selectedProject.voice_profile,
         sources: sourceItems,
         onProgress: (done, total, progressStage) => {
           setProgress({ done, total });

@@ -64,6 +64,56 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
 
 const inputCls = 'w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm text-slate-900';
 
+function splitVoiceSamples(text: string) {
+  return text.split(/\n\s*\n/).map((sample) => sample.trim()).filter(Boolean);
+}
+
+function buildVoiceProfile(samples: string[]) {
+  const cleaned = samples.map((sample) => sample.trim()).filter(Boolean);
+  if (!cleaned.length) {
+    return 'Cole posts reais do expert para consolidar a voz. Sem exemplos reais, a IA tende a escrever de forma genérica.';
+  }
+
+  const starts = cleaned
+    .map((sample) => sample.split(/\n/).map((line) => line.trim()).find(Boolean) || '')
+    .filter(Boolean)
+    .slice(0, 8);
+  const avgChars = Math.round(cleaned.reduce((sum, sample) => sum + sample.length, 0) / cleaned.length);
+  const firstPerson = cleaned.filter((sample) => /\b(eu|meu|minha|comigo|percebi|acho)\b/i.test(sample)).length;
+  const questions = cleaned.filter((sample) => sample.includes('?')).length;
+  const lineBreakHeavy = cleaned.filter((sample) => sample.split(/\n/).filter(Boolean).length >= 4).length;
+  const hasEllipsis = cleaned.filter((sample) => sample.includes('...')).length;
+  const commonWords = Array.from(
+    cleaned.join(' ').toLowerCase()
+      .replace(/[.,!?;:()"']/g, ' ')
+      .split(/\s+/)
+      .filter((word) => word.length > 4 && !['sobre', 'porque', 'quando', 'muito', 'minha', 'mesmo', 'gente', 'coisa'].includes(word))
+      .reduce((map, word) => map.set(word, (map.get(word) || 0) + 1), new Map<string, number>())
+      .entries()
+  ).sort((a, b) => b[1] - a[1]).slice(0, 12).map(([word]) => word);
+
+  return [
+    `Base analisada: ${cleaned.length} posts reais do expert.`,
+    `Tamanho medio dos posts: ${avgChars} caracteres.`,
+    '',
+    'Como a voz tende a funcionar:',
+    firstPerson >= cleaned.length * 0.35 ? '- Usa bastante primeira pessoa e observacao propria. Priorize "eu percebi", "tenho visto", "acho" quando fizer sentido.' : '- Usa menos primeira pessoa. Evite forcar relato pessoal quando nao existir.',
+    questions >= cleaned.length * 0.25 ? '- Usa perguntas como recurso de raciocinio. Pode abrir loops com pergunta natural, sem parecer copy.' : '- Nao depende muito de perguntas. Evite fechar tudo com pergunta de engajamento.',
+    lineBreakHeavy >= cleaned.length * 0.35 ? '- Gosta de respiro visual e blocos curtos. Nao transformar tudo em paragrafo longo.' : '- Aceita paragrafos mais cheios. Evite quebrar cada frase como post motivacional.',
+    hasEllipsis > 0 ? '- Usa pausas e reticencias em alguns textos. Pode usar com moderacao.' : '- Evitar reticencias e dramaticidade artificial.',
+    commonWords.length ? `- Vocabulos recorrentes para observar: ${commonWords.join(', ')}.` : '',
+    '',
+    'Instrucoes para gerar novos posts:',
+    '- Escrever como alguem pensando em voz alta, nao como uma aula formatada.',
+    '- Evitar conclusoes com cara de frase pronta, tipo "isso muda o jogo", "a real e simples", "parece X, mas e Y" em excesso.',
+    '- Usar os posts reais como fonte de ritmo, pontuacao e nivel de informalidade.',
+    '- Se a fonte nova for tecnica, traduzir para uma descoberta/opiniao do expert antes de escrever.',
+    '',
+    'Aberturas reais para se inspirar:',
+    ...starts.map((start) => `- ${start.slice(0, 180)}`),
+  ].filter(Boolean).join('\n');
+}
+
 export default function ProjectDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -71,10 +121,11 @@ export default function ProjectDetail() {
   const [name, setName] = useState('');
   const [dna, setDna] = useState<BrandDNA>(EMPTY_DNA);
   const [voiceSamplesText, setVoiceSamplesText] = useState('');
+  const [voiceProfile, setVoiceProfile] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [openSections, setOpenSections] = useState({ expert: true, profile: true, content: true, voice: false, visual: false });
+  const [openSections, setOpenSections] = useState({ memory: true, expert: true, profile: true, content: true, voice: false, visual: false });
   const [magicModalOpen, setMagicModalOpen] = useState(false);
 
   useEffect(() => { if (id) load(); }, [id]);
@@ -87,6 +138,7 @@ export default function ProjectDetail() {
       setName(data.name);
       setDna({ ...EMPTY_DNA, ...(data.brand_dna ?? {}) });
       setVoiceSamplesText((data.voice_samples ?? []).join('\n\n'));
+      setVoiceProfile(data.voice_profile || '');
     } catch (err) {
       console.error(err);
     } finally {
@@ -107,8 +159,8 @@ export default function ProjectDetail() {
     setSaving(true);
     try {
       const compiled = compileBrandDNA(dna);
-      const voiceSamples = voiceSamplesText.split(/\n\s*\n/).map((sample) => sample.trim()).filter(Boolean);
-      await db.updateProject(project.id, { name: name.trim(), brand_dna: dna, knowledge_base: compiled, voice_samples: voiceSamples });
+      const voiceSamples = splitVoiceSamples(voiceSamplesText);
+      await db.updateProject(project.id, { name: name.trim(), brand_dna: dna, knowledge_base: compiled, voice_samples: voiceSamples, voice_profile: voiceProfile });
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
     } catch (err) {
@@ -128,6 +180,7 @@ export default function ProjectDetail() {
       profile: true,
       content: true,
       voice: true,
+      memory: true,
       visual: true
     });
   }
@@ -142,6 +195,9 @@ export default function ProjectDetail() {
   }
 
   if (!project) return null;
+
+  const voiceSamples = splitVoiceSamples(voiceSamplesText);
+  const strongVoiceBase = voiceSamples.length >= 12;
 
   return (
     <div className="space-y-6 pb-12">
@@ -225,6 +281,53 @@ export default function ProjectDetail() {
       </div>
 
       <Section
+        title="Memoria de Voz"
+        subtitle="Posts reais, padroes de escrita e repertorio que fazem a IA soar como o expert"
+        open={openSections.memory}
+        onToggle={() => toggleSection('memory')}
+      >
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_360px]">
+          <Field label="Biblioteca de posts reais" hint="Cole posts reais separados por uma linha em branco. Para voz forte, mire em 12 a 50 exemplos.">
+            <textarea
+              rows={16}
+              value={voiceSamplesText}
+              onChange={(e) => setVoiceSamplesText(e.target.value)}
+              placeholder={'Cole um post real aqui.\n\nCole outro post real aqui.\n\nQuanto mais material real, menos a IA inventa uma voz generica.'}
+              className={inputCls}
+            />
+          </Field>
+
+          <div className="space-y-4">
+            <div className={`rounded-xl border p-4 ${strongVoiceBase ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}>
+              <p className={`text-xs font-black uppercase tracking-widest ${strongVoiceBase ? 'text-emerald-700' : 'text-amber-700'}`}>Base atual</p>
+              <p className="mt-2 text-3xl font-black text-slate-900">{voiceSamples.length}</p>
+              <p className="mt-1 text-sm text-slate-600">
+                {strongVoiceBase ? 'Boa base para gerar posts mais parecidos.' : 'Ainda pouco repertorio. Cole mais posts reais antes de cobrar muita precisao.'}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setVoiceProfile(buildVoiceProfile(splitVoiceSamples(voiceSamplesText)))}
+              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-800 shadow-sm transition hover:border-indigo-300 hover:text-indigo-700"
+            >
+              Atualizar perfil de voz pela biblioteca
+            </button>
+
+            <Field label="Perfil de voz consolidado" hint="Editavel. Este bloco entra nos prompts antes de gerar posts para X.">
+              <textarea
+                rows={13}
+                value={voiceProfile}
+                onChange={(e) => setVoiceProfile(e.target.value)}
+                placeholder="Clique em atualizar perfil ou escreva manualmente como este expert fala."
+                className={inputCls}
+              />
+            </Field>
+          </div>
+        </div>
+      </Section>
+
+      <Section
         title="Expert & Oferta"
         subtitle="Promessa, mecanismo, crenças e provas que tornam o conteúdo autoral"
         open={openSections.expert}
@@ -283,9 +386,6 @@ export default function ProjectDetail() {
         </Field>
         <Field label="Mensagens-chave" hint="O que a marca nunca deixa de comunicar?">
           <textarea rows={3} value={dna.key_messages} onChange={(e) => set('key_messages', e.target.value)} placeholder="Ex: Produtividade é sobre clareza, não velocidade. Resultados sustentáveis exigem sistemas." className={inputCls} />
-        </Field>
-        <Field label="Posts reais do expert (few-shot)" hint="Cole 3 a 10 posts REAIS do expert, separados por uma linha em branco. Quanto mais autênticos, mais humana fica a geração de conteúdo.">
-          <textarea rows={8} value={voiceSamplesText} onChange={(e) => setVoiceSamplesText(e.target.value)} placeholder={'Cole um post real aqui.\n\nDeixe uma linha em branco entre cada post.\n\nA IA vai imitar o ritmo, vocabulário e pontuação destes exemplos.'} className={inputCls} />
         </Field>
       </Section>
 

@@ -27,6 +27,7 @@ export interface Project {
   name: string;
   knowledge_base: string;
   voice_learning_notes?: string;
+  voice_profile?: string;
   voice_samples?: string[];
   brand_dna?: BrandDNA;
   created_at: string;
@@ -294,6 +295,7 @@ export interface CreateProjectInput {
   name: string;
   knowledge_base: string;
   voice_learning_notes?: string;
+  voice_profile?: string;
   voice_samples?: string[];
   brand_dna?: BrandDNA;
 }

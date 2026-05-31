@@ -439,6 +439,7 @@ export default function CreateContent() {
           knowledgeBase: selectedProject?.knowledge_base,
           voiceSamples: selectedProject?.voice_samples,
           voiceLearningNotes: selectedProject?.voice_learning_notes,
+          voiceProfile: selectedProject?.voice_profile,
         });
         setXDraft(result);
         setStrategy(null);

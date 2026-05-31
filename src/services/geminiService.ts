@@ -212,12 +212,14 @@ export function buildVoiceContext(params: {
   voiceSamples?: string[];
   approvedExamples?: string[];
   voiceLearningNotes?: string;
+  voiceProfile?: string;
   maxSamples?: number;
 }): string {
-  const { brandDNA, knowledgeBase, voiceSamples, approvedExamples, voiceLearningNotes, maxSamples = 6 } = params;
+  const { brandDNA, knowledgeBase, voiceSamples, approvedExamples, voiceLearningNotes, voiceProfile, maxSamples = 10 } = params;
   const brandContext = brandDNA ? compileBrandDNA(brandDNA) : knowledgeBase;
   const blocks = [
     brandContext ? `Expert Brand DNA:\n${brandContext}` : '',
+    voiceProfile ? `Consolidated voice profile from real posts. This is more important than generic copywriting advice:\n${voiceProfile}` : '',
     renderVoiceSamples(
       voiceSamples,
       'REAL posts written by this expert (mirror their voice, rhythm, sentence length, punctuation, vocabulary):',
@@ -298,6 +300,7 @@ export async function generateXContentDraft(params: {
   voiceSamples?: string[];
   approvedExamples?: string[];
   voiceLearningNotes?: string;
+  voiceProfile?: string;
   refinementInstruction?: string;
   currentDraft?: Pick<ContentDraft, 'body' | 'thread_items' | 'hook' | 'objective'>;
 }): Promise<XContentDraftResult> {
@@ -312,10 +315,11 @@ export async function generateXContentDraft(params: {
     voiceSamples,
     approvedExamples,
     voiceLearningNotes,
+    voiceProfile,
     refinementInstruction,
     currentDraft,
   } = params;
-  const voiceContext = buildVoiceContext({ brandDNA, knowledgeBase, voiceSamples, approvedExamples, voiceLearningNotes });
+  const voiceContext = buildVoiceContext({ brandDNA, knowledgeBase, voiceSamples, approvedExamples, voiceLearningNotes, voiceProfile });
   const isThread = format === 'x_thread';
   const currentText = currentDraft
     ? [
@@ -436,6 +440,7 @@ interface XBatchBaseParams {
   voiceSamples?: string[];
   approvedExamples?: string[];
   voiceLearningNotes?: string;
+  voiceProfile?: string;
   sources?: XBatchSource[];
 }
 
@@ -633,10 +638,11 @@ export async function generateXResearchPlan(params: XBatchBaseParams): Promise<X
     voiceSamples,
     approvedExamples,
     voiceLearningNotes,
+    voiceProfile,
     sources,
   } = params;
   const count = Math.max(1, Math.min(30, Math.round(params.count || 12)));
-  const voiceContext = buildVoiceContext({ brandDNA, knowledgeBase, voiceSamples, approvedExamples, voiceLearningNotes });
+  const voiceContext = buildVoiceContext({ brandDNA, knowledgeBase, voiceSamples, approvedExamples, voiceLearningNotes, voiceProfile });
   const styleGuide = buildBatchStyleGuide(styleGuidance);
   const sourceContext = buildBatchSourceContext(sources);
 
@@ -711,10 +717,11 @@ export async function reviewXDraftVoice(params: {
   voiceSamples?: string[];
   approvedExamples?: string[];
   voiceLearningNotes?: string;
+  voiceProfile?: string;
   styleGuidance?: string;
 }): Promise<XVoiceReview> {
-  const { item, brandDNA, knowledgeBase, voiceSamples, approvedExamples, voiceLearningNotes, styleGuidance } = params;
-  const voiceContext = buildVoiceContext({ brandDNA, knowledgeBase, voiceSamples, approvedExamples, voiceLearningNotes });
+  const { item, brandDNA, knowledgeBase, voiceSamples, approvedExamples, voiceLearningNotes, voiceProfile, styleGuidance } = params;
+  const voiceContext = buildVoiceContext({ brandDNA, knowledgeBase, voiceSamples, approvedExamples, voiceLearningNotes, voiceProfile });
   const styleGuide = buildBatchStyleGuide(styleGuidance);
   const draftText = item.format === 'x_thread' ? item.thread_items.join('\n\n') : item.body;
 
@@ -775,11 +782,12 @@ export async function generateXDraftsFromResearch(params: XBatchBaseParams & {
     voiceSamples,
     approvedExamples,
     voiceLearningNotes,
+    voiceProfile,
     sources,
     onProgress,
   } = params;
   const count = researchItems.length;
-  const voiceContext = buildVoiceContext({ brandDNA, knowledgeBase, voiceSamples, approvedExamples, voiceLearningNotes });
+  const voiceContext = buildVoiceContext({ brandDNA, knowledgeBase, voiceSamples, approvedExamples, voiceLearningNotes, voiceProfile });
   const styleGuide = buildBatchStyleGuide(styleGuidance);
   const sourceContext = buildBatchSourceContext(sources);
   const chunks: XResearchItem[][] = [];
@@ -882,6 +890,7 @@ export async function generateXContentBatch(params: {
   voiceSamples?: string[];
   approvedExamples?: string[];
   voiceLearningNotes?: string;
+  voiceProfile?: string;
   onProgress?: (done: number, total: number) => void;
 }): Promise<XBatchResult> {
   const {
@@ -894,10 +903,11 @@ export async function generateXContentBatch(params: {
     voiceSamples,
     approvedExamples,
     voiceLearningNotes,
+    voiceProfile,
     onProgress,
   } = params;
   const count = Math.max(1, Math.min(30, Math.round(params.count || 12)));
-  const voiceContext = buildVoiceContext({ brandDNA, knowledgeBase, voiceSamples, approvedExamples, voiceLearningNotes });
+  const voiceContext = buildVoiceContext({ brandDNA, knowledgeBase, voiceSamples, approvedExamples, voiceLearningNotes, voiceProfile });
   const styleGuide = buildBatchStyleGuide(styleGuidance);
 
   // Etapa 1 — outline de angulos distintos.
@@ -1001,6 +1011,7 @@ Return ONLY a JSON array of ${chunkSpec.length} objects with this exact structur
           voiceSamples,
           approvedExamples,
           voiceLearningNotes,
+          voiceProfile,
           refinementInstruction: 'Fallback de lote: gere apenas um draft forte para completar a quantidade solicitada.',
         });
         items.push({ ...draft, angle: draft.angle || angle, format });

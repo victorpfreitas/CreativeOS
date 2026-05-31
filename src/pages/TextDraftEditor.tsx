@@ -173,6 +173,7 @@ export default function TextDraftEditor() {
         knowledgeBase: draft.project?.knowledge_base,
         voiceSamples: draft.project?.voice_samples,
         voiceLearningNotes: draft.project?.voice_learning_notes,
+        voiceProfile: draft.project?.voice_profile,
         refinementInstruction: instruction,
         currentDraft: { ...draft, body, thread_items: threadItems },
       });

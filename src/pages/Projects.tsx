@@ -182,7 +182,7 @@ export default function Projects() {
                     }`}>
                       {status.label}
                     </span>
-                    <span className="text-xs text-slate-500">{progress.completed}/{progress.total} blocos-chave</span>
+                    <span className="text-xs text-slate-500">{project.voice_samples?.length || 0} posts de voz</span>
                   </div>
                   <div className="h-2 overflow-hidden rounded-full bg-white/5">
                     <div

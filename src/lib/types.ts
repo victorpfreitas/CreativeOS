@@ -224,6 +224,11 @@ export interface ContentDraft {
   hook: string;
   variants: string[];
   content_angle?: string;
+  research_thesis?: string;
+  research_context?: string;
+  voice_review_score?: number;
+  voice_review_verdict?: 'pass' | 'needs_review' | 'reject';
+  voice_review_notes?: string;
   batch_id?: string;
   created_at: string;
   updated_at: string;
@@ -303,6 +308,11 @@ export interface CreateContentDraftInput {
   hook?: string;
   variants?: string[];
   content_angle?: string;
+  research_thesis?: string;
+  research_context?: string;
+  voice_review_score?: number;
+  voice_review_verdict?: ContentDraft['voice_review_verdict'];
+  voice_review_notes?: string;
   batch_id?: string;
 }
 

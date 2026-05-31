@@ -366,12 +366,56 @@ const BATCH_CHUNK_SIZE = 4;
 export interface XBatchItem extends XContentDraftResult {
   angle: string;
   format: ContentDraft['format'];
+  research_thesis?: string;
+  research_context?: string;
+  voice_review_score?: number;
+  voice_review_verdict?: 'pass' | 'needs_review' | 'reject';
+  voice_review_notes?: string;
 }
 
 export interface XBatchResult {
   items: XBatchItem[];
   requested: number;
   failedChunks: number;
+}
+
+export interface XResearchItem {
+  angle: string;
+  thesis: string;
+  why_it_matters: string;
+  conversation_trigger: string;
+  content_job: 'contrarian' | 'framework' | 'mistake' | 'story' | 'proof' | 'tactical' | 'diagnosis';
+  best_format: ContentDraft['format'];
+  quality_score: number;
+  risk_flags: string[];
+  source_note: string;
+}
+
+export interface XResearchPlan {
+  topic_diagnosis: string;
+  audience_tensions: string[];
+  beliefs_to_challenge: string[];
+  items: XResearchItem[];
+}
+
+export interface XVoiceReview {
+  score: number;
+  verdict: 'pass' | 'needs_review' | 'reject';
+  notes: string;
+  rewrite_instruction: string;
+}
+
+interface XBatchBaseParams {
+  mode: 'pillars' | 'topic';
+  topic?: string;
+  count?: number;
+  formatMix?: 'x_post' | 'x_thread' | 'mixed';
+  styleGuidance?: string;
+  brandDNA?: BrandDNA;
+  knowledgeBase?: string;
+  voiceSamples?: string[];
+  approvedExamples?: string[];
+  voiceLearningNotes?: string;
 }
 
 function buildBatchStyleGuide(styleGuidance?: string): string {
@@ -386,6 +430,27 @@ function pickBatchFormat(formatMix: 'x_post' | 'x_thread' | 'mixed', index: numb
   return formatMix;
 }
 
+function normalizeResearchItem(item: Partial<XResearchItem>, index: number, formatMix: 'x_post' | 'x_thread' | 'mixed'): XResearchItem {
+  const score = Math.max(0, Math.min(100, Number(item.quality_score) || 70));
+  const allowedJobs = ['contrarian', 'framework', 'mistake', 'story', 'proof', 'tactical', 'diagnosis'];
+  const contentJob = allowedJobs.includes(item.content_job || '') ? item.content_job! : 'diagnosis';
+  const bestFormat = item.best_format === 'x_thread' || item.best_format === 'x_post'
+    ? item.best_format
+    : pickBatchFormat(formatMix, index);
+
+  return {
+    angle: limitText(item.angle || item.thesis || `Angulo ${index + 1}`, 180),
+    thesis: limitText(item.thesis || item.angle || '', 260),
+    why_it_matters: limitText(item.why_it_matters, 320),
+    conversation_trigger: limitText(item.conversation_trigger, 260),
+    content_job: contentJob,
+    best_format: bestFormat,
+    quality_score: score,
+    risk_flags: Array.isArray(item.risk_flags) ? item.risk_flags.map((flag) => limitText(flag, 90)).filter(Boolean).slice(0, 4) : [],
+    source_note: limitText(item.source_note, 220),
+  };
+}
+
 function dedupeAngles(angles: string[], count: number): string[] {
   const seen = new Set<string>();
   const result: string[] = [];
@@ -398,6 +463,241 @@ function dedupeAngles(angles: string[], count: number): string[] {
     if (result.length >= count) break;
   }
   return result;
+}
+
+export async function generateXResearchPlan(params: XBatchBaseParams): Promise<XResearchPlan> {
+  const {
+    mode,
+    topic,
+    formatMix = 'mixed',
+    styleGuidance,
+    brandDNA,
+    knowledgeBase,
+    voiceSamples,
+    approvedExamples,
+    voiceLearningNotes,
+  } = params;
+  const count = Math.max(1, Math.min(30, Math.round(params.count || 12)));
+  const voiceContext = buildVoiceContext({ brandDNA, knowledgeBase, voiceSamples, approvedExamples, voiceLearningNotes });
+  const styleGuide = buildBatchStyleGuide(styleGuidance);
+
+  const prompt = `You are the Researcher stage for CreativeOS.
+
+Your job is not to write copy. Transform a raw topic or expert positioning into high-quality editorial angles for X/Twitter.
+
+${mode === 'topic'
+    ? `Topic to research:\n${topic || 'Autoridade e posicionamento do expert'}`
+    : `Use the expert's pillars, beliefs, proof points, enemies, and recurring angles to build the research plan.`}
+
+${voiceContext ? `${voiceContext}\n` : ''}
+${styleGuide ? `${styleGuide}\n` : ''}
+
+Quality filters:
+- Thesis before hook: every angle must defend a clear point of view.
+- Healthy friction: someone should be able to agree, disagree, reply, or add an example.
+- Specificity: avoid vague "how to use X" or "future of X" angles.
+- Distance: angles must do different editorial jobs, not cosmetic variations.
+- Native to X: deliver value in the post/thread itself.
+- Fit the expert's beliefs, common enemy, proof, and mechanism.
+
+Return ONLY valid JSON with this exact structure:
+{
+  "topic_diagnosis": "short diagnosis of the content opportunity",
+  "audience_tensions": ["tension 1", "tension 2"],
+  "beliefs_to_challenge": ["belief 1", "belief 2"],
+  "items": [
+    {
+      "angle": "short editorial angle",
+      "thesis": "clear point of view",
+      "why_it_matters": "why this matters to the audience now",
+      "conversation_trigger": "what this should make people think or reply",
+      "content_job": "contrarian | framework | mistake | story | proof | tactical | diagnosis",
+      "best_format": "x_post | x_thread",
+      "quality_score": 0,
+      "risk_flags": ["what could make this generic"],
+      "source_note": "brand/source insight behind this angle"
+    }
+  ]
+}
+
+Generate ${count} items. Write in pt-BR.`;
+
+  const text = await callAI(prompt);
+  const raw = parseAIJson<Partial<XResearchPlan>>(text, 'plano de pesquisa do lote');
+  const items = (Array.isArray(raw.items) ? raw.items : [])
+    .map((item, index) => normalizeResearchItem(item, index, formatMix))
+    .filter((item) => item.angle && item.thesis)
+    .slice(0, count);
+
+  if (items.length === 0) throw new Error('Nao consegui gerar ideias boas para o lote. Tente ajustar o tema.');
+
+  return {
+    topic_diagnosis: compactText(raw.topic_diagnosis),
+    audience_tensions: Array.isArray(raw.audience_tensions) ? raw.audience_tensions.map((item) => limitText(item, 160)).filter(Boolean).slice(0, 5) : [],
+    beliefs_to_challenge: Array.isArray(raw.beliefs_to_challenge) ? raw.beliefs_to_challenge.map((item) => limitText(item, 160)).filter(Boolean).slice(0, 5) : [],
+    items,
+  };
+}
+
+export async function reviewXDraftVoice(params: {
+  item: XBatchItem;
+  brandDNA?: BrandDNA;
+  knowledgeBase?: string;
+  voiceSamples?: string[];
+  approvedExamples?: string[];
+  voiceLearningNotes?: string;
+  styleGuidance?: string;
+}): Promise<XVoiceReview> {
+  const { item, brandDNA, knowledgeBase, voiceSamples, approvedExamples, voiceLearningNotes, styleGuidance } = params;
+  const voiceContext = buildVoiceContext({ brandDNA, knowledgeBase, voiceSamples, approvedExamples, voiceLearningNotes });
+  const styleGuide = buildBatchStyleGuide(styleGuidance);
+  const draftText = item.format === 'x_thread' ? item.thread_items.join('\n\n') : item.body;
+
+  const prompt = `You are the Voice Reviewer stage for CreativeOS.
+
+Evaluate if this X draft sounds like the expert and if it is specific enough to publish.
+
+Draft:
+${draftText}
+
+Research thesis:
+${item.research_thesis || item.angle}
+
+${voiceContext ? `${voiceContext}\n` : ''}
+${styleGuide ? `${styleGuide}\n` : ''}
+
+Return ONLY valid JSON:
+{
+  "score": 0,
+  "verdict": "pass | needs_review | reject",
+  "notes": "short pt-BR explanation",
+  "rewrite_instruction": "what to change if rewritten"
+}`;
+
+  try {
+    const text = await callAI(prompt);
+    const raw = parseAIJson<Partial<XVoiceReview>>(text, 'revisao de voz');
+    const score = Math.max(0, Math.min(100, Number(raw.score) || 60));
+    const verdict = raw.verdict === 'pass' || raw.verdict === 'needs_review' || raw.verdict === 'reject'
+      ? raw.verdict
+      : score >= 82 ? 'pass' : score >= 60 ? 'needs_review' : 'reject';
+    return {
+      score,
+      verdict,
+      notes: limitText(raw.notes, 320),
+      rewrite_instruction: limitText(raw.rewrite_instruction, 260),
+    };
+  } catch {
+    return {
+      score: 0,
+      verdict: 'needs_review',
+      notes: 'Nao consegui revisar automaticamente a voz deste draft.',
+      rewrite_instruction: 'Revise manualmente antes de salvar.',
+    };
+  }
+}
+
+export async function generateXDraftsFromResearch(params: XBatchBaseParams & {
+  researchItems: XResearchItem[];
+  onProgress?: (done: number, total: number) => void;
+}): Promise<XBatchResult> {
+  const {
+    researchItems,
+    formatMix = 'mixed',
+    styleGuidance,
+    brandDNA,
+    knowledgeBase,
+    voiceSamples,
+    approvedExamples,
+    voiceLearningNotes,
+    onProgress,
+  } = params;
+  const count = researchItems.length;
+  const voiceContext = buildVoiceContext({ brandDNA, knowledgeBase, voiceSamples, approvedExamples, voiceLearningNotes });
+  const styleGuide = buildBatchStyleGuide(styleGuidance);
+  const chunks: XResearchItem[][] = [];
+  for (let i = 0; i < researchItems.length; i += BATCH_CHUNK_SIZE) {
+    chunks.push(researchItems.slice(i, i + BATCH_CHUNK_SIZE));
+  }
+
+  const items: XBatchItem[] = [];
+  let failedChunks = 0;
+
+  for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex += 1) {
+    const chunk = chunks[chunkIndex];
+    const chunkSpec = chunk.map((researchItem, indexInChunk) => {
+      const globalIndex = chunkIndex * BATCH_CHUNK_SIZE + indexInChunk;
+      const format = formatMix === 'mixed' ? researchItem.best_format || pickBatchFormat(formatMix, globalIndex) : formatMix;
+      return { ...researchItem, format };
+    });
+
+    const expandPrompt = `You are the Copywriter stage for CreativeOS, writing X/Twitter drafts for a high-trust expert.
+
+Write ${chunkSpec.length} separate X drafts in pt-BR, one for each approved research angle below.
+
+Approved research angles:
+${chunkSpec.map((spec, index) => `${index + 1}. [${spec.format === 'x_thread' ? 'THREAD' : 'SINGLE POST'}]
+Angle: ${spec.angle}
+Thesis: ${spec.thesis}
+Why it matters: ${spec.why_it_matters}
+Conversation trigger: ${spec.conversation_trigger}
+Risk flags to avoid: ${spec.risk_flags.join(', ') || 'none'}`).join('\n\n')}
+
+${voiceContext ? `${voiceContext}\n` : ''}
+${styleGuide ? `${styleGuide}\n` : ''}
+
+${ANTI_GENERIC_RULES}
+
+Rules:
+- Respect each item's format: SINGLE POST -> fill "body" (<=270 chars), empty "thread_items". THREAD -> 4 to 7 "thread_items" (each <=270 chars), empty "body".
+- Do not number thread items inside the item text.
+- Include 3 short alternative hooks in "variants".
+- Write from the thesis, not from a generic hook formula.
+- "angle" must echo the approved angle.
+
+Return ONLY a JSON array of ${chunkSpec.length} objects with this exact structure:
+[
+  {"angle":"the angle","title":"short internal title","hook":"strongest opening line","body":"single post body or empty for thread","thread_items":["t1","t2"],"objective":"strategic reason","variants":["v1","v2","v3"],"voice_notes_used":"voice signals used"}
+]`;
+
+    try {
+      const text = await callAI(expandPrompt);
+      const raw = parseAIJsonArray<Partial<XContentDraftResult>>(text, 'copy do lote para X');
+      raw.forEach((entry, indexInChunk) => {
+        const spec = chunkSpec[indexInChunk] || chunkSpec[chunkSpec.length - 1];
+        const normalized = normalizeXResult(entry, spec.format, entry.angle || spec.angle, voiceLearningNotes);
+        items.push({
+          ...normalized,
+          angle: normalized.angle || spec.angle,
+          format: spec.format,
+          research_thesis: spec.thesis,
+          research_context: compactText([
+            spec.why_it_matters ? `Por que importa: ${spec.why_it_matters}` : '',
+            spec.conversation_trigger ? `Gatilho de conversa: ${spec.conversation_trigger}` : '',
+            spec.source_note ? `Fonte/insight: ${spec.source_note}` : '',
+          ].filter(Boolean).join('\n')),
+        });
+      });
+    } catch {
+      failedChunks += 1;
+    }
+
+    onProgress?.(Math.min(items.length, count), count);
+  }
+
+  const reviewedItems: XBatchItem[] = [];
+  for (const item of items.slice(0, count)) {
+    const review = await reviewXDraftVoice({ item, brandDNA, knowledgeBase, voiceSamples, approvedExamples, voiceLearningNotes, styleGuidance });
+    reviewedItems.push({
+      ...item,
+      voice_review_score: review.score,
+      voice_review_verdict: review.verdict,
+      voice_review_notes: review.notes,
+    });
+    onProgress?.(reviewedItems.length, count);
+  }
+
+  return { items: reviewedItems, requested: count, failedChunks };
 }
 
 // Gera muitos drafts de X de uma vez: 1 call de outline (angulos) + N calls de expansao em chunks.

@@ -15,7 +15,12 @@ import {
 import { useNavigate } from 'react-router-dom';
 import type { ContentDraft, Project } from '../lib/types';
 import * as db from '../lib/database';
-import { generateXContentBatch, type XBatchItem } from '../services/geminiService';
+import {
+  generateXDraftsFromResearch,
+  generateXResearchPlan,
+  type XBatchItem,
+  type XResearchItem,
+} from '../services/geminiService';
 
 const inputCls = 'w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500';
 
@@ -58,9 +63,13 @@ export default function BatchCreate() {
   const [qualityBar, setQualityBar] = useState('Cada post precisa ter uma opiniao clara, um exemplo concreto e uma frase que eu realmente falaria.');
   const [savingVoiceRules, setSavingVoiceRules] = useState(false);
 
+  const [researchItems, setResearchItems] = useState<XResearchItem[]>([]);
+  const [selectedIdeas, setSelectedIdeas] = useState<Set<number>>(new Set());
+  const [researchSummary, setResearchSummary] = useState('');
   const [items, setItems] = useState<XBatchItem[]>([]);
   const [kept, setKept] = useState<Set<number>>(new Set());
   const [generating, setGenerating] = useState(false);
+  const [writing, setWriting] = useState(false);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -144,7 +153,7 @@ export default function BatchCreate() {
     }
   }
 
-  async function handleGenerate() {
+  async function handleGenerateIdeas() {
     if (!selectedProject) {
       setError('Escolha um expert.');
       return;
@@ -156,12 +165,15 @@ export default function BatchCreate() {
     setGenerating(true);
     setError('');
     setNotice('');
+    setResearchItems([]);
+    setSelectedIdeas(new Set());
+    setResearchSummary('');
     setItems([]);
     setKept(new Set());
     setProgress({ done: 0, total: count });
     try {
       const approvedDrafts = await db.getContentDrafts();
-      const result = await generateXContentBatch({
+      const result = await generateXResearchPlan({
         mode,
         topic: topic.trim(),
         count,
@@ -172,21 +184,50 @@ export default function BatchCreate() {
         voiceSamples: selectedProject.voice_samples,
         approvedExamples: approvedToExamples(approvedDrafts, selectedProject.id),
         voiceLearningNotes: selectedProject.voice_learning_notes,
+      });
+      setResearchItems(result.items);
+      setSelectedIdeas(new Set(result.items.map((_, index) => index).filter((index) => result.items[index].quality_score >= 70)));
+      setResearchSummary(result.topic_diagnosis);
+      setNotice(`${result.items.length} ideias encontradas. Aprove as melhores antes de escrever os posts.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Nao consegui gerar ideias agora.');
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  async function handleWriteSelectedIdeas() {
+    if (!selectedProject || selectedIdeas.size === 0) return;
+    setWriting(true);
+    setError('');
+    setNotice('');
+    setItems([]);
+    setKept(new Set());
+    const selectedResearch = researchItems.filter((_, index) => selectedIdeas.has(index));
+    setProgress({ done: 0, total: selectedResearch.length });
+    try {
+      const approvedDrafts = await db.getContentDrafts();
+      const result = await generateXDraftsFromResearch({
+        mode,
+        topic: topic.trim(),
+        count: selectedResearch.length,
+        formatMix,
+        researchItems: selectedResearch,
+        styleGuidance: buildStyleGuidance(),
+        brandDNA: selectedProject.brand_dna,
+        knowledgeBase: selectedProject.knowledge_base,
+        voiceSamples: selectedProject.voice_samples,
+        approvedExamples: approvedToExamples(approvedDrafts, selectedProject.id),
+        voiceLearningNotes: selectedProject.voice_learning_notes,
         onProgress: (done, total) => setProgress({ done, total }),
       });
       setItems(result.items);
       setKept(new Set());
-      if (result.items.length === 0) {
-        setError('A IA nao retornou nenhum draft. Tente novamente.');
-      } else if (result.failedChunks > 0) {
-        setNotice(`Geramos ${result.items.length} de ${result.requested}. Alguns lotes falharam, mas tentamos completar automaticamente. Revise antes de salvar.`);
-      } else {
-        setNotice(`${result.items.length} drafts gerados. Selecione os que quiser salvar no board.`);
-      }
+      setNotice(`${result.items.length} posts escritos e revisados. Selecione os que devem ir para o board.`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Nao consegui gerar o lote agora.');
+      setError(err instanceof Error ? err.message : 'Nao consegui escrever os posts agora.');
     } finally {
-      setGenerating(false);
+      setWriting(false);
     }
   }
 
@@ -205,6 +246,23 @@ export default function BatchCreate() {
 
   function clearSelection() {
     setKept(new Set());
+  }
+
+  function toggleIdea(index: number) {
+    setSelectedIdeas((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  }
+
+  function selectAllIdeas() {
+    setSelectedIdeas(new Set(researchItems.map((_, index) => index)));
+  }
+
+  function clearIdeas() {
+    setSelectedIdeas(new Set());
   }
 
   async function handleSaveAll() {
@@ -228,6 +286,11 @@ export default function BatchCreate() {
           variants: item.variants,
           voice_notes_used: item.voice_notes_used,
           content_angle: item.angle,
+          research_thesis: item.research_thesis,
+          research_context: item.research_context,
+          voice_review_score: item.voice_review_score,
+          voice_review_verdict: item.voice_review_verdict,
+          voice_review_notes: item.voice_review_notes,
           batch_id: batchId,
         }));
       await db.createContentDrafts(inputs);
@@ -355,11 +418,85 @@ export default function BatchCreate() {
           </div>
         </div>
 
-        <button onClick={handleGenerate} disabled={generating || !projectId} className="premium-button-primary flex items-center gap-2 disabled:opacity-50">
+        <button onClick={handleGenerateIdeas} disabled={generating || writing || !projectId} className="premium-button-primary flex items-center gap-2 disabled:opacity-50">
           {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
-          {generating ? `Gerando ${progress.done}/${progress.total}...` : 'Gerar lote'}
+          {generating ? 'Pesquisando ideias...' : 'Gerar ideias'}
         </button>
       </section>
+
+      {researchItems.length > 0 && (
+        <section className="premium-card space-y-4 p-6">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <p className="premium-label">Researcher</p>
+              <h2 className="mt-1 text-xl font-bold text-white">Mesa de ideias</h2>
+              <p className="mt-1 text-sm text-slate-500">{researchSummary || 'Aprove as teses que merecem virar post.'}</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={selectAllIdeas} className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-bold text-slate-200 transition hover:bg-white/[0.08]">
+                <CheckSquare className="h-4 w-4" /> Aprovar todas
+              </button>
+              <button type="button" onClick={clearIdeas} className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-bold text-slate-200 transition hover:bg-white/[0.08]">
+                <Square className="h-4 w-4" /> Limpar
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+            {['contrarian', 'framework', 'mistake', 'proof', 'story', 'tactical', 'diagnosis'].map((job) => {
+              const total = researchItems.filter((item) => item.content_job === job).length;
+              return (
+                <div key={job} className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{job}</p>
+                  <p className="mt-1 text-lg font-black text-white">{total}</p>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="space-y-3">
+            {researchItems.map((item, index) => {
+              const selected = selectedIdeas.has(index);
+              return (
+                <div key={`${item.angle}-${index}`} className={`rounded-2xl border p-4 transition ${selected ? 'border-emerald-400/50 bg-emerald-500/[0.08]' : 'border-white/10 bg-black/20'}`}>
+                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2 text-[11px] font-black uppercase tracking-widest text-indigo-300">
+                        <span>{item.best_format === 'x_thread' ? 'Thread sugerida' : 'Post sugerido'}</span>
+                        <span className="rounded-full bg-white/[0.04] px-2 py-0.5 text-slate-400 normal-case tracking-normal">{item.content_job}</span>
+                        <span className={`rounded-full px-2 py-0.5 normal-case tracking-normal ${item.quality_score >= 80 ? 'bg-emerald-500/15 text-emerald-200' : item.quality_score >= 65 ? 'bg-amber-500/15 text-amber-200' : 'bg-red-500/15 text-red-200'}`}>Score {item.quality_score}</span>
+                        {selected && <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-emerald-200 normal-case tracking-normal">Aprovada</span>}
+                      </div>
+                      <h3 className="mt-2 text-base font-bold leading-snug text-white">{item.angle}</h3>
+                      <p className="mt-2 text-sm leading-relaxed text-slate-200">{item.thesis}</p>
+                      {item.why_it_matters && <p className="mt-2 text-sm leading-relaxed text-slate-400">{item.why_it_matters}</p>}
+                      {item.conversation_trigger && <p className="mt-2 text-xs leading-relaxed text-indigo-200/80">Conversa: {item.conversation_trigger}</p>}
+                      {item.risk_flags.length > 0 && <p className="mt-2 text-xs leading-relaxed text-amber-200/80">Risco: {item.risk_flags.join(', ')}</p>}
+                    </div>
+                    <button type="button" onClick={() => toggleIdea(index)} className={`inline-flex shrink-0 items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-bold transition ${selected ? 'bg-emerald-500 text-white hover:bg-emerald-400' : 'border border-white/10 bg-white/[0.04] text-slate-200 hover:bg-white/[0.08]'}`}>
+                      {selected ? <Minus className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+                      {selected ? 'Remover' : 'Aprovar'}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="sticky bottom-4 z-20 rounded-2xl border border-white/10 bg-[#101018]/95 p-4 shadow-2xl shadow-black/40 backdrop-blur">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="text-sm font-black text-white">{selectedIdeas.size} de {researchItems.length} ideias aprovadas</p>
+                <p className="mt-0.5 text-xs text-slate-500">A copy so sera escrita para as ideias aprovadas aqui.</p>
+              </div>
+              <button onClick={handleWriteSelectedIdeas} disabled={writing || generating || selectedIdeas.size === 0} className="premium-button-primary flex items-center justify-center gap-2 disabled:opacity-50">
+                {writing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+                {writing ? `Escrevendo ${progress.done}/${progress.total}...` : 'Escrever ideias aprovadas'}
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
 
       {items.length > 0 && (
         <section className="premium-card space-y-4 p-6">
@@ -389,6 +526,11 @@ export default function BatchCreate() {
                         <div className="flex flex-wrap items-center gap-2 text-[11px] font-black uppercase tracking-widest text-indigo-300">
                           <span>{item.format === 'x_thread' ? 'Thread' : 'Post'}</span>
                           <span className="rounded-full bg-white/[0.04] px-2 py-0.5 text-slate-400 normal-case tracking-normal">{draftCharCount(item)} caracteres</span>
+                          {typeof item.voice_review_score === 'number' && item.voice_review_score > 0 && (
+                            <span className={`rounded-full px-2 py-0.5 normal-case tracking-normal ${item.voice_review_verdict === 'pass' ? 'bg-emerald-500/15 text-emerald-200' : item.voice_review_verdict === 'reject' ? 'bg-red-500/15 text-red-200' : 'bg-amber-500/15 text-amber-200'}`}>
+                              Voz {item.voice_review_score}
+                            </span>
+                          )}
                           {selected && <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-emerald-200 normal-case tracking-normal">Selecionado</span>}
                         </div>
                         {item.angle && <p className="mt-1 text-xs font-medium leading-relaxed text-slate-500">{item.angle}</p>}
@@ -400,6 +542,12 @@ export default function BatchCreate() {
                     </div>
 
                     <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-100">{draftPreviewText(item)}</p>
+                    {item.voice_review_notes && (
+                      <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3 text-xs leading-relaxed text-slate-300">
+                        <span className="font-black uppercase tracking-widest text-slate-500">Revisor de voz: </span>
+                        {item.voice_review_notes}
+                      </div>
+                    )}
 
                     <div className="flex flex-wrap gap-2">
                       <button type="button" onClick={() => handleLearnFromItem(index, 'good')} disabled={Boolean(learningIndex)} className="inline-flex items-center gap-2 rounded-lg border border-emerald-400/20 bg-emerald-500/10 px-3 py-1.5 text-xs font-bold text-emerald-200 transition hover:bg-emerald-500/15 disabled:opacity-50">

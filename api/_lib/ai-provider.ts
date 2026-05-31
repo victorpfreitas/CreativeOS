@@ -6,11 +6,21 @@ function readEnvKey(...keys: string[]) {
   return '';
 }
 
+import { DEFAULT_OPENROUTER_MODELS, sanitizeModels } from './openrouter-models.js';
+
 const GEMINI_API_KEY = readEnvKey('GEMINI_API_KEY', 'VITE_GEMINI_API_KEY');
 const OPENROUTER_API_KEY = readEnvKey('OPENROUTER_API_KEY', 'VITE_OPENROUTER_API_KEY');
-const OPENROUTER_MODEL = readEnvKey('OPENROUTER_MODEL', 'VITE_OPENROUTER_MODEL') || 'openrouter/free';
+
+// OPENROUTER_MODEL may be a single id or a comma-separated fallback list.
+// Falls back to the curated DEFAULT_OPENROUTER_MODELS when unset.
+const OPENROUTER_ENV_MODELS = sanitizeModels(
+  readEnvKey('OPENROUTER_MODEL', 'VITE_OPENROUTER_MODEL').split(',').map((m) => m.trim()).filter(Boolean),
+  DEFAULT_OPENROUTER_MODELS,
+);
+
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 const AI_TIMEOUT_MS = 45000;
+const OPENROUTER_TIMEOUT_MS = Number(readEnvKey('OPENROUTER_TIMEOUT_MS')) || 30000;
 
 async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = AI_TIMEOUT_MS) {
   const controller = new AbortController();
@@ -38,8 +48,9 @@ export function cleanJsonText(text: string) {
   return text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
 }
 
-export async function generateAiText(prompt: string) {
+export async function generateAiText(prompt: string, options?: { openRouterModels?: string[] }) {
   const providerErrors: string[] = [];
+  const openRouterModels = sanitizeModels(options?.openRouterModels, OPENROUTER_ENV_MODELS);
 
   if (GEMINI_API_KEY) {
     try {
@@ -78,38 +89,43 @@ export async function generateAiText(prompt: string) {
     throw new Error(providerErrors.join(' | ') || 'Nenhum provedor de IA retornou conteudo.');
   }
 
-  try {
-    const response = await fetchWithTimeout('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: OPENROUTER_MODEL,
-        messages: [{
-          role: 'user',
-          content: `${prompt}\n\nIMPORTANT: Return ONLY valid JSON when JSON is requested. Do not use markdown code blocks.`,
-        }],
-      }),
-    });
+  // Try each OpenRouter model in order until one returns usable content.
+  for (const model of openRouterModels) {
+    try {
+      const response = await fetchWithTimeout('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model,
+          messages: [{
+            role: 'user',
+            content: `${prompt}\n\nIMPORTANT: Return ONLY valid JSON when JSON is requested. Do not use markdown code blocks.`,
+          }],
+        }),
+      }, OPENROUTER_TIMEOUT_MS);
 
-    if (!response.ok) {
-      providerErrors.push(await providerStatusError('OpenRouter', response));
-      throw new Error(providerErrors.join(' | '));
+      if (!response.ok) {
+        providerErrors.push(await providerStatusError(`OpenRouter[${model}]`, response));
+        continue;
+      }
+
+      const data = await response.json();
+      const text = data.choices?.[0]?.message?.content;
+      if (!text) {
+        providerErrors.push(providerError(`OpenRouter[${model}]`));
+        continue;
+      }
+
+      return { text: cleanJsonText(text), providerErrors };
+    } catch (err: any) {
+      providerErrors.push(err?.name === 'AbortError'
+        ? `OpenRouter[${model}] timed out`
+        : `OpenRouter[${model}] request failed`);
     }
-
-    const data = await response.json();
-    const text = data.choices?.[0]?.message?.content;
-    if (!text) {
-      providerErrors.push(providerError('OpenRouter'));
-      throw new Error(providerErrors.join(' | '));
-    }
-
-    return { text: cleanJsonText(text), providerErrors };
-  } catch (err: any) {
-    if (err instanceof Error && err.message) throw err;
-    providerErrors.push(err?.name === 'AbortError' ? 'OpenRouter timed out' : 'OpenRouter request failed');
-    throw new Error(providerErrors.join(' | '));
   }
+
+  throw new Error(providerErrors.join(' | ') || 'Nenhum provedor de IA retornou conteudo.');
 }

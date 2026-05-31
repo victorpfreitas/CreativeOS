@@ -20,6 +20,7 @@ const SlideshowEditor = lazy(() => import('./pages/SlideshowEditor'));
 const Schedule = lazy(() => import('./pages/Schedule'));
 const Collections = lazy(() => import('./pages/Collections'));
 const Gallery = lazy(() => import('./pages/Gallery'));
+const Settings = lazy(() => import('./pages/Settings'));
 const Login = lazy(() => import('./pages/Login'));
 
 interface ErrorBoundaryProps { children: ReactNode }
@@ -103,6 +104,7 @@ function App() {
                   <Route path="editor/:id" element={<SlideshowEditor />} />
                   <Route path="collections" element={<Collections />} />
                   <Route path="gallery" element={<Gallery />} />
+                  <Route path="settings" element={<Settings />} />
                 </Route>
               </Route>
 

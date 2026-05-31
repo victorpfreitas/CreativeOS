@@ -4,7 +4,7 @@
 
 import { db } from './firebase';
 import {
-  collection, doc, getDocs, getDoc, addDoc, updateDoc, deleteDoc,
+  collection, doc, getDocs, getDoc, addDoc, updateDoc, deleteDoc, setDoc,
   query, orderBy, where, Timestamp,
 } from 'firebase/firestore';
 import type {
@@ -502,4 +502,25 @@ export async function getDashboardStats(): Promise<{
     totalHooks: hookSnap.size,
     scheduledToday,
   };
+}
+
+// ---- App Settings (global) ----
+
+export interface AiSettings {
+  openRouterModels: string[];
+}
+
+const AI_SETTINGS_REF = () => doc(db, 'app_settings', 'ai');
+
+export async function getAiSettings(): Promise<AiSettings> {
+  const snap = await getDoc(AI_SETTINGS_REF());
+  const models = snap.exists() ? snap.data().openRouterModels : undefined;
+  return { openRouterModels: Array.isArray(models) ? models : [] };
+}
+
+export async function saveAiSettings(openRouterModels: string[]): Promise<void> {
+  await setDoc(AI_SETTINGS_REF(), {
+    openRouterModels,
+    updated_at: Timestamp.now().toDate().toISOString(),
+  });
 }

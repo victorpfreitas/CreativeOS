@@ -84,6 +84,12 @@ OPENROUTER_MODEL=openrouter/free,openai/gpt-oss-120b:free
 # Opcional: timeout por tentativa de modelo OpenRouter (ms). Default 30000.
 OPENROUTER_TIMEOUT_MS=30000
 
+# Firebase Admin (server-side). Necessário para as funções em api/ acessarem o
+# Firestore sem depender das regras de segurança públicas. Cole o JSON da
+# service account (uma linha) ou a versão em base64. Sem isso, usa Application
+# Default Credentials (ADC).
+FIREBASE_SERVICE_ACCOUNT={"type":"service_account","project_id":"...","private_key":"...","client_email":"..."}
+
 # Upload de imagens (ImgBB) — server-side, sem prefixo VITE_
 IMGBB_API_KEY=...
 ```
@@ -99,7 +105,15 @@ Os modelos podem ser configurados de duas formas:
 - **Na plataforma** (recomendado): pela tela **Settings** (ícone no rodapé da sidebar). A seleção é salva no Firestore (`app_settings/ai`) e enviada a cada chamada de IA. Permite adicionar/remover IDs livremente e reordenar a cascata (até 4 modelos).
 - **Por ambiente**: via `OPENROUTER_MODEL` (lista separada por vírgula). É o padrão usado quando não há configuração na plataforma e para chamadas server-side (ex.: automações).
 
-> Os IDs são validados/sanitizados na função `api/ai.ts` antes de chamar o OpenRouter. Gravar em `app_settings` pode exigir ajuste nas regras de segurança do Firestore.
+> Os IDs são validados/sanitizados na função `api/ai.ts` antes de chamar o OpenRouter.
+
+### Segurança do Firestore
+
+O frontend acessa o Firestore com o SDK cliente (sujeito às regras de segurança), enquanto as funções em `api/` usam o **Firebase Admin SDK** (`api/_lib/firebase-server.ts`), que roda com uma service account e **ignora as regras**. Isso permite travar as regras para exigir login sem quebrar as automações server-side.
+
+As regras recomendadas estão versionadas em [`firestore.rules`](./firestore.rules): exigem usuário autenticado para ler/escrever. Aplique-as no console do Firebase (Firestore → Regras) ou via `firebase deploy --only firestore:rules`.
+
+> ⚠️ Não deixe as regras como `allow read, write: if true` em produção — isso expõe todo o banco publicamente. Configure a `FIREBASE_SERVICE_ACCOUNT` antes de travar as regras, senão as automações perdem acesso.
 
 ---
 

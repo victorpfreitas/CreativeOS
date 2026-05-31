@@ -691,14 +691,16 @@ export default function BatchCreate() {
           <div className="space-y-3">
             {researchItems.map((item, index) => {
               const selected = selectedIdeas.has(index);
+              const isFallback = item.risk_flags.some((flag) => flag.toLowerCase().includes('recuperacao') || flag.toLowerCase().includes('fallback'));
               return (
-                <div key={`${item.angle}-${index}`} className={`rounded-2xl border p-4 transition ${selected ? 'border-emerald-400/50 bg-emerald-500/[0.08]' : 'border-white/10 bg-black/20'}`}>
+                <div key={`${item.angle}-${index}`} className={`rounded-2xl border p-4 transition ${selected ? 'border-emerald-400/50 bg-emerald-500/[0.08]' : isFallback ? 'border-amber-400/25 bg-amber-500/[0.045]' : 'border-white/10 bg-black/20'}`}>
                   <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2 text-[11px] font-black uppercase tracking-widest text-indigo-300">
                         <span>{item.best_format === 'x_thread' ? 'Thread sugerida' : 'Post sugerido'}</span>
                         <span className="rounded-full bg-white/[0.04] px-2 py-0.5 text-slate-400 normal-case tracking-normal">{item.content_job}</span>
                         <span className={`rounded-full px-2 py-0.5 normal-case tracking-normal ${item.quality_score >= 80 ? 'bg-emerald-500/15 text-emerald-200' : item.quality_score >= 65 ? 'bg-amber-500/15 text-amber-200' : 'bg-red-500/15 text-red-200'}`}>Score {item.quality_score}</span>
+                        {isFallback && <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-amber-100 normal-case tracking-normal">Recuperacao</span>}
                         {selected && <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-emerald-200 normal-case tracking-normal">Aprovada</span>}
                       </div>
                       <h3 className="mt-2 text-base font-bold leading-snug text-white">{item.angle}</h3>

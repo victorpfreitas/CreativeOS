@@ -470,8 +470,8 @@ const FAST_BATCH_AI_OPTIONS = {
   providerOrder: 'openrouter_first' as const,
   maxOpenRouterModels: 1,
   openRouterTimeoutMs: 12000,
-  skipGemini: true,
-  clientTimeoutMs: 35000,
+  skipGemini: false,
+  clientTimeoutMs: 50000,
 };
 
 function pickBatchFormat(formatMix: 'x_post' | 'x_thread' | 'mixed', index: number): ContentDraft['format'] {
@@ -519,6 +519,32 @@ function sourceSeedText(sources?: XBatchSource[]): string {
   return limitText(source?.text || source?.title || source?.url || '', 220);
 }
 
+function sourceTopicLabel(topic?: string, sources?: XBatchSource[]): string {
+  const explicit = compactText(topic);
+  if (explicit) return limitText(explicit, 72);
+  const source = sources?.find((item) => compactText(item.title)) || sources?.find((item) => compactText(item.text));
+  const title = compactText(source?.title);
+  if (title) return limitText(title.replace(/^as redes sociais morreram\s*/i, 'redes sociais e autoridade'), 72);
+  const firstSentence = compactText(source?.text).split(/[.!?\n]/).map((item) => item.trim()).find((item) => item.length > 18);
+  return limitText(firstSentence || 'conteudo e autoridade', 72);
+}
+
+function fallbackSourceInsights(sources?: XBatchSource[]): string[] {
+  const text = compactText(sources?.map((source) => source.text || source.title || '').join('\n'));
+  const sentences = text
+    .split(/[.!?\n]/)
+    .map((item) => item.trim())
+    .filter((item) => item.length >= 32 && item.length <= 180)
+    .filter((item, index, arr) => arr.findIndex((candidate) => candidate.toLowerCase() === item.toLowerCase()) === index)
+    .slice(0, 4);
+  return sentences.length ? sentences : [
+    'A discussao central precisa virar um ponto de vista, nao apenas um resumo.',
+    'O material tem potencial, mas precisa de criterio editorial antes de virar post.',
+    'A melhor pauta nasce quando uma fonte encontra uma opiniao forte do expert.',
+    'O conteudo deve gerar conversa qualificada, nao apenas preencher calendario.',
+  ];
+}
+
 function fallbackResearchPlan(params: {
   topic?: string;
   count: number;
@@ -526,34 +552,34 @@ function fallbackResearchPlan(params: {
   sources?: XBatchSource[];
 }): XResearchPlan {
   const seed = sourceSeedText(params.sources);
-  const base = compactText(params.topic) || seed || 'autoridade, IA e conteudo';
+  const base = sourceTopicLabel(params.topic, params.sources);
+  const insights = fallbackSourceInsights(params.sources);
+  const fallbackCount = Math.min(params.count, 4);
   const frames = [
-    ['diagnosis', `O problema real por tras de ${base}`, `A maioria discute a ferramenta, mas a decisao importante e o criterio de uso.`],
-    ['mistake', `O erro mais comum em ${base}`, `O atalho parece produtividade, mas costuma gerar retrabalho e conteudo generico.`],
-    ['framework', `Um criterio simples para decidir sobre ${base}`, `Separar contexto, objetivo e execucao deixa a tecnologia mais util.`],
-    ['contrarian', `O que quase ninguem fala sobre ${base}`, `Mais volume nao resolve quando a tese ainda esta fraca.`],
-    ['tactical', `Como aplicar ${base} sem virar conteudo raso`, `O ganho vem de transformar fonte bruta em ponto de vista claro.`],
-    ['proof', `Um sinal de que ${base} esta funcionando`, `Quando o conteudo gera conversa qualificada, a ideia saiu do obvio.`],
-    ['story', `Uma situacao pratica envolvendo ${base}`, `O bastidor ajuda a mostrar criterio sem soar como aula generica.`],
+    ['diagnosis', `Diagnosticar o que mudou em ${base}`, `A tese precisa mostrar qual comportamento ficou obsoleto e qual criterio substitui isso.`],
+    ['contrarian', `Contrapor a leitura obvia sobre ${base}`, `O angulo forte nao repete a fonte: ele discorda, aprofunda ou muda a interpretacao.`],
+    ['framework', `Criar um criterio pratico para ${base}`, `A audiencia precisa sair com uma forma melhor de decidir, nao so com uma opiniao.`],
+    ['mistake', `Apontar o erro que transforma ${base} em conteudo raso`, `O risco e usar a fonte como resumo, sem conectar com experiencia e ponto de vista.`],
   ] as const;
 
-  const items = Array.from({ length: params.count }, (_, index) => {
+  const items = Array.from({ length: fallbackCount }, (_, index) => {
     const frame = frames[index % frames.length];
+    const insight = insights[index % insights.length];
     return normalizeResearchItem({
       angle: frame[1],
-      thesis: frame[2],
-      why_it_matters: 'Serve para transformar insumo bruto em posicionamento de autoridade, nao apenas em mais um post.',
-      conversation_trigger: 'Fazer a pessoa comparar volume de conteudo com clareza de ponto de vista.',
+      thesis: `${frame[2]} Fonte usada como pista: ${insight}`,
+      why_it_matters: 'Esta e uma recuperacao local porque a IA nao devolveu uma analise confiavel. Use como ponto de partida, nao como pauta final.',
+      conversation_trigger: 'Pergunta de revisao: qual opiniao sua deixa esse angulo menos generico?',
       content_job: frame[0],
       best_format: pickBatchFormat(params.formatMix, index),
-      quality_score: 62,
-      risk_flags: ['Fallback sem IA completa; revisar especificidade antes de salvar'],
+      quality_score: 41,
+      risk_flags: ['Modo recuperacao: IA nao analisou a fonte com profundidade', 'Regerar recomendado antes de aprovar em lote'],
       source_note: seed || 'Gerado a partir do tema e do Brand DNA disponivel.',
     }, index, params.formatMix);
   });
 
   return {
-    topic_diagnosis: 'A IA demorou para responder, entao montei uma mesa inicial em modo fallback para voce nao perder o fluxo.',
+    topic_diagnosis: 'A IA demorou para responder. Mostrei poucos angulos de recuperacao para voce revisar ou tentar gerar novamente.',
     audience_tensions: ['Quer produzir mais, mas sem sacrificar voz e criterio.'],
     beliefs_to_challenge: ['Mais posts nao compensam uma tese fraca.'],
     items,

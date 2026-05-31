@@ -78,12 +78,42 @@ VITE_FIREBASE_APP_ID=...
 
 GEMINI_API_KEY=...
 OPENROUTER_API_KEY=...
+# Opcional: modelo(s) OpenRouter. Aceita um único id ou uma lista separada por
+# vírgula (ordem = ordem de fallback). Se omitido, usa a lista padrão curada.
+OPENROUTER_MODEL=openrouter/free,openai/gpt-oss-120b:free
+# Opcional: timeout por tentativa de modelo OpenRouter (ms). Default 30000.
+OPENROUTER_TIMEOUT_MS=30000
+
+# Firebase Admin (server-side). Necessário para as funções em api/ acessarem o
+# Firestore sem depender das regras de segurança públicas. Cole o JSON da
+# service account (uma linha) ou a versão em base64. Sem isso, usa Application
+# Default Credentials (ADC).
+FIREBASE_SERVICE_ACCOUNT={"type":"service_account","project_id":"...","private_key":"...","client_email":"..."}
 
 # Upload de imagens (ImgBB) — server-side, sem prefixo VITE_
 IMGBB_API_KEY=...
 ```
 
 As chaves de IA e de upload devem ser tratadas como server-side. Evite depender de variáveis `VITE_` para provedores de IA ou para o upload (ImgBB) em produção — o upload passa pela função serverless `api/upload.ts`, que mantém a `IMGBB_API_KEY` fora do bundle do cliente.
+
+### Seleção de modelos de IA e fallback
+
+O **Gemini** é o provedor primário (quando há chave). Se ele falhar, o sistema tenta os modelos do **OpenRouter em cascata**, na ordem configurada, até um responder — útil porque modelos gratuitos às vezes demoram ou retornam erro.
+
+Os modelos podem ser configurados de duas formas:
+
+- **Na plataforma** (recomendado): pela tela **Settings** (ícone no rodapé da sidebar). A seleção é salva no Firestore (`app_settings/ai`) e enviada a cada chamada de IA. Permite adicionar/remover IDs livremente e reordenar a cascata (até 4 modelos).
+- **Por ambiente**: via `OPENROUTER_MODEL` (lista separada por vírgula). É o padrão usado quando não há configuração na plataforma e para chamadas server-side (ex.: automações).
+
+> Os IDs são validados/sanitizados na função `api/ai.ts` antes de chamar o OpenRouter.
+
+### Segurança do Firestore
+
+O frontend acessa o Firestore com o SDK cliente (sujeito às regras de segurança), enquanto as funções em `api/` usam o **Firebase Admin SDK** (`api/_lib/firebase-server.ts`), que roda com uma service account e **ignora as regras**. Isso permite travar as regras para exigir login sem quebrar as automações server-side.
+
+As regras recomendadas estão versionadas em [`firestore.rules`](./firestore.rules): exigem usuário autenticado para ler/escrever. Aplique-as no console do Firebase (Firestore → Regras) ou via `firebase deploy --only firestore:rules`.
+
+> ⚠️ Não deixe as regras como `allow read, write: if true` em produção — isso expõe todo o banco publicamente. Configure a `FIREBASE_SERVICE_ACCOUNT` antes de travar as regras, senão as automações perdem acesso.
 
 ---
 

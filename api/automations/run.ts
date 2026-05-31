@@ -1,4 +1,5 @@
 import {
+  serverDb,
   addDoc,
   collection,
   doc,
@@ -8,8 +9,7 @@ import {
   Timestamp,
   updateDoc,
   where,
-} from 'firebase/firestore';
-import { serverDb } from '../_lib/firebase-server.js';
+} from '../_lib/firebase-server.js';
 import { generateAiText } from '../_lib/ai-provider.js';
 import { fetchYouTubeTranscriptSource, getRequestOrigin, type YouTubeTranscriptResult } from '../_lib/youtube-transcript-client.js';
 import type { Automation, BrandDNA, ContentBrief, Hook, Project, Slide, Slideshow } from '../../src/lib/types';

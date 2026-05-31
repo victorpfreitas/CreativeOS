@@ -13,16 +13,21 @@ import type {
   XContentDraftResult,
 } from '../lib/types';
 import { getExpertContentPreset } from '../lib/contentPresets';
+import { loadOpenRouterModels } from '../lib/aiSettings';
 
 async function callAI(prompt: string): Promise<string> {
   const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), 45000);
+  // Allow extra time: the server may cascade through several OpenRouter models.
+  const timeout = window.setTimeout(() => controller.abort(), 120000);
+
+  // Pull the user-configured OpenRouter model list (empty => server default).
+  const models = await loadOpenRouterModels().catch(() => [] as string[]);
 
   try {
     const response = await fetch('/api/ai', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt }),
+      body: JSON.stringify({ prompt, models }),
       signal: controller.signal,
     });
 

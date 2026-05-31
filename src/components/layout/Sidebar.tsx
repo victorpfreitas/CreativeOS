@@ -48,10 +48,19 @@ export default function Sidebar() {
       </nav>
 
       <div className="p-6">
-        <button className="flex items-center gap-3 px-4 py-3 w-full rounded-xl hover:bg-white/5 transition-colors text-left border border-transparent">
+        <NavLink
+          to="/settings"
+          className={({ isActive }) =>
+            `flex items-center gap-3 px-4 py-3 w-full rounded-xl transition-colors text-left border ${
+              isActive
+                ? 'bg-white/10 text-white font-medium border-white/5'
+                : 'hover:bg-white/5 hover:text-slate-200 border-transparent'
+            }`
+          }
+        >
           <Settings className="w-5 h-5" />
           Settings
-        </button>
+        </NavLink>
       </div>
     </div>
   );

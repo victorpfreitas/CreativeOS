@@ -12,18 +12,16 @@ export default function AppLayout() {
     <div className="flex h-screen overflow-hidden bg-[#0a0a0a] text-slate-300 font-space">
       <Sidebar />
       <main className={`flex-1 overflow-x-hidden relative ${isEditor ? 'overflow-hidden' : 'overflow-y-auto'}`}>
-        {/* Subtle background glow effect */}
-        <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] bg-indigo-600/20 rounded-full blur-[120px] pointer-events-none" />
-        <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-pink-600/10 rounded-full blur-[120px] pointer-events-none" />
-        
-        <div className={`relative z-10 ${isEditor ? 'h-full min-h-0 p-4 max-w-none' : 'p-8 max-w-7xl mx-auto'}`}>
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-indigo-500/10 to-transparent" />
+
+        <div className={`relative z-10 ${isEditor ? 'h-full min-h-0 p-4 max-w-none' : 'mx-auto max-w-7xl p-6 lg:p-8'}`}>
           <Outlet />
         </div>
       </main>
       
       {!isEditor && (
-        <div className="fixed top-6 right-6 flex items-center gap-4 bg-white/5 border border-white/10 backdrop-blur-md px-4 py-2 rounded-full shadow-2xl z-50">
-          <span className="text-sm font-medium text-slate-300">
+        <div className="fixed right-6 top-5 z-50 flex items-center gap-3 rounded-xl border border-white/10 bg-[#101018]/90 px-3 py-2 shadow-2xl backdrop-blur">
+          <span className="max-w-[220px] truncate text-xs font-medium text-slate-400">
             {user?.email}
           </span>
           <button

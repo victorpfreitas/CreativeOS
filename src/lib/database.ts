@@ -394,6 +394,7 @@ export async function createExpertVoicePost(input: CreateExpertVoicePostInput): 
   const now = Timestamp.now().toDate().toISOString();
   const data = {
     ...input,
+    memory_kind: input.memory_kind || 'real_post',
     tags: input.tags || [],
     quality: Math.max(0, Math.min(100, Number(input.quality) || 70)),
     is_reference: input.is_reference ?? true,

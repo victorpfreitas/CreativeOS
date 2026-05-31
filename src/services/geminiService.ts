@@ -270,7 +270,7 @@ function normalizeXResult(
   const threadItems = Array.isArray(result.thread_items)
     ? result.thread_items.map((item) => limitText(item, 270)).filter(Boolean).slice(0, 7)
     : [];
-  const body = isThread ? '' : limitText(result.body || result.hook, 270);
+  const body = isThread ? '' : limitText(result.body || result.hook, 900);
   const normalizedThreadItems = isThread
     ? (threadItems.length > 0 ? threadItems : [limitText(result.hook || result.body, 270)].filter(Boolean))
     : [];
@@ -475,7 +475,7 @@ const FAST_BATCH_AI_OPTIONS = {
   providerOrder: 'openrouter_first' as const,
   maxOpenRouterModels: 1,
   openRouterTimeoutMs: 12000,
-  skipGemini: false,
+  skipGemini: true,
   clientTimeoutMs: 50000,
 };
 
@@ -534,7 +534,7 @@ export async function generateXResearchPlan(params: XBatchBaseParams): Promise<X
     sources,
   } = params;
   const count = Math.max(1, Math.min(30, Math.round(params.count || 12)));
-  const voiceContext = buildVoiceContext({ brandDNA, knowledgeBase, voiceSamples, approvedExamples, voiceLearningNotes, voiceProfile });
+  const voiceContext = buildVoiceContext({ brandDNA, knowledgeBase, voiceSamples: [], approvedExamples: [], voiceLearningNotes, voiceProfile, maxSamples: 0 });
   const styleGuide = buildBatchStyleGuide(styleGuidance);
   const sourceContext = buildBatchSourceContext(sources);
 
@@ -721,7 +721,7 @@ ${sourceContext ? `${sourceContext}\n` : ''}
 ${ANTI_GENERIC_RULES}
 
 Rules:
-- Respect each item's format: SINGLE POST -> fill "body" (<=270 chars), empty "thread_items". THREAD -> 4 to 7 "thread_items" (each <=270 chars), empty "body".
+- Respect each item's format: SINGLE POST -> fill "body" with the requested editorial length from the human direction (short <=280, medium 500-900), empty "thread_items". THREAD -> 4 to 7 "thread_items" (each <=270 chars), empty "body".
 - Do not number thread items inside the item text.
 - Include 3 short alternative hooks in "variants".
 - Write from the thesis, not from a generic hook formula.
@@ -825,7 +825,7 @@ Return ONLY a JSON array of ${count} strings.`;
 
   let angles: string[] = [];
   try {
-    const outlineText = await callAI(outlinePrompt);
+    const outlineText = await callAI(outlinePrompt, FAST_BATCH_AI_OPTIONS);
     angles = dedupeAngles(parseAIJsonArray<string>(outlineText, 'ângulos do lote'), count);
   } catch {
     angles = [];
@@ -865,7 +865,7 @@ ${styleGuide ? `${styleGuide}\n` : ''}
 ${ANTI_GENERIC_RULES}
 
 Rules:
-- Respect each item's format: SINGLE POST → fill "body" (<=270 chars), empty "thread_items". THREAD → 4 to 7 "thread_items" (each <=270 chars), empty "body".
+- Respect each item's format: SINGLE POST -> fill "body" with the requested editorial length from the human direction (short <=280, medium 500-900), empty "thread_items". THREAD -> 4 to 7 "thread_items" (each <=270 chars), empty "body".
 - Do not number thread items inside the item text.
 - Include 3 short alternative hooks in "variants".
 - "angle" must echo the angle this draft addresses.
@@ -876,7 +876,7 @@ Return ONLY a JSON array of ${chunkSpec.length} objects with this exact structur
 ]`;
 
     try {
-      const text = await callAI(expandPrompt);
+      const text = await callAI(expandPrompt, FAST_BATCH_AI_OPTIONS);
       const raw = parseAIJsonArray<Partial<XContentDraftResult>>(text, 'lote de posts para X');
       raw.forEach((entry, indexInChunk) => {
         const spec = chunkSpec[indexInChunk] || chunkSpec[chunkSpec.length - 1];
@@ -891,32 +891,8 @@ Return ONLY a JSON array of ${chunkSpec.length} objects with this exact structur
     onProgress?.(Math.min(produced, count), count);
   }
 
-  if (items.length < count) {
-    const existingAngles = new Set(items.map((item) => item.angle.toLowerCase()));
-    const missingAngles = angles.filter((angle) => !existingAngles.has(angle.toLowerCase())).slice(0, count - items.length);
-    for (const angle of missingAngles) {
-      const format = pickBatchFormat(formatMix, items.length);
-      try {
-        const draft = await generateXContentDraft({
-          format,
-          topic: angle,
-          goal: 'Gerar um post de alta qualidade para o lote, sem soar generico.',
-          sourceNotes: styleGuide,
-          brandDNA,
-          knowledgeBase,
-          voiceSamples,
-          approvedExamples,
-          voiceLearningNotes,
-          voiceProfile,
-          refinementInstruction: 'Fallback de lote: gere apenas um draft forte para completar a quantidade solicitada.',
-        });
-        items.push({ ...draft, angle: draft.angle || angle, format });
-      } catch {
-        failedChunks += 1;
-      }
-      onProgress?.(Math.min(items.length, count), count);
-      if (items.length >= count) break;
-    }
+  if (items.length === 0) {
+    throw new Error('Nao consegui escrever os posts do lote. Tente novamente com menos itens ou uma fonte mais clara.');
   }
 
   return { items: items.slice(0, count), requested: count, failedChunks };

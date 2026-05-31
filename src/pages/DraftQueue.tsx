@@ -431,7 +431,18 @@ function BoardCard({
       </div>
 
       <h3 className="text-base font-bold leading-tight text-white">{title}</h3>
-      <p className="mt-2 line-clamp-4 text-sm leading-relaxed text-slate-400">{detail || 'Sem texto salvo.'}</p>
+      <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-300">{detail || 'Sem texto salvo.'}</p>
+
+      {isContent && (
+        <div className="mt-4 space-y-2 rounded-xl border border-white/10 bg-black/20 p-3">
+          {item.draft.research_thesis && <PreviewLine label="Tese" value={item.draft.research_thesis} />}
+          {item.draft.source_title && <PreviewLine label="Fonte" value={item.draft.source_title} />}
+          {item.draft.voice_review_notes && <PreviewLine label="Voz" value={item.draft.voice_review_notes} />}
+          {typeof item.draft.voice_review_score === 'number' && item.draft.voice_review_score > 0 && (
+            <PreviewLine label="Score de voz" value={`${item.draft.voice_review_score}/100`} />
+          )}
+        </div>
+      )}
 
       <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
         <Fact label="Expert" value={project?.name || 'Sem expert'} />
@@ -487,6 +498,15 @@ function Fact({ label, value }: { label: string; value: string }) {
     <div className="rounded-xl border border-white/5 bg-white/[0.03] p-2">
       <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{label}</p>
       <p className="mt-1 truncate text-xs font-bold text-slate-200">{value}</p>
+    </div>
+  );
+}
+
+function PreviewLine({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{label}</p>
+      <p className="mt-1 text-xs leading-relaxed text-slate-300">{value}</p>
     </div>
   );
 }

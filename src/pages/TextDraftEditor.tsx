@@ -142,6 +142,16 @@ export default function TextDraftEditor() {
     const updated = await saveDraft('approved');
     if (updated) {
       await recordLearning('approved', draftText(draft), currentText, 'O usuario aprovou este texto para postar.');
+      await db.createExpertVoicePost({
+        project_id: draft.project_id,
+        text: currentText,
+        source_type: draft.source_type || 'manual',
+        source_url: draft.source_url,
+        memory_kind: 'approved_draft',
+        tags: ['approved-draft'],
+        quality: 85,
+        is_reference: true,
+      });
       navigate('/queue');
     }
   }

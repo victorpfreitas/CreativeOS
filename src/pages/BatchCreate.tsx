@@ -13,7 +13,7 @@ import {
   Wand2,
   Youtube,
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import type { ContentIdea, ContentRun, ExpertVoicePost, Project } from '../lib/types';
 import * as db from '../lib/database';
 import {
@@ -23,6 +23,7 @@ import {
   type XResearchItem,
 } from '../services/geminiService';
 import { fetchYouTubeSource } from '../services/sourceService';
+import { buildVoiceProfile, splitVoiceSamples, uniqueVoiceSamples, voiceMemoryHealth } from '../lib/voiceMemory';
 
 const inputCls = 'w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500';
 const softButtonCls = 'inline-flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-bold text-slate-200 transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-50';
@@ -30,6 +31,7 @@ const softButtonCls = 'inline-flex items-center justify-center gap-2 rounded-xl 
 type SourceKind = XBatchSource['type'];
 type FormatMix = 'x_post' | 'x_thread' | 'mixed';
 type ColumnId = 'source' | 'ideas' | 'voice_matched' | 'draft' | 'approved';
+type TargetLength = 'short' | 'medium' | 'thread';
 
 const sourceLabels: Record<SourceKind, string> = {
   manual: 'Tema livre',
@@ -42,10 +44,10 @@ const sourceLabels: Record<SourceKind, string> = {
 
 const columns: Array<{ id: ColumnId; title: string; hint: string }> = [
   { id: 'source', title: 'Fonte recebida', hint: 'Entrada salva e pronta para pesquisa' },
-  { id: 'ideas', title: 'Ideias', hint: 'Teses extraidas pelo Researcher' },
+  { id: 'ideas', title: 'Ideias', hint: 'Teses extraídas pelo Researcher' },
   { id: 'voice_matched', title: 'Com voz', hint: 'Ideias conectadas a posts reais' },
   { id: 'draft', title: 'Rascunhos', hint: 'Copy gerada e revisada' },
-  { id: 'approved', title: 'Aprovados', hint: 'Ja enviados para o board' },
+  { id: 'approved', title: 'No Board', hint: 'Enviados para revisão final' },
 ];
 
 function compactText(value?: string) {
@@ -56,30 +58,6 @@ function limitText(value: string | undefined, max: number) {
   const text = compactText(value);
   if (text.length <= max) return text;
   return `${text.slice(0, Math.max(0, max - 1)).trim()}...`;
-}
-
-function splitVoicePosts(text: string) {
-  return text
-    .split(/\n\s*\n/g)
-    .map((item) => compactText(item))
-    .filter((item) => item.length >= 30);
-}
-
-function buildSimpleVoiceProfile(samples: string[]) {
-  if (!samples.length) return '';
-  const avgLength = Math.round(samples.reduce((sum, sample) => sum + sample.length, 0) / samples.length);
-  const hasShortLines = samples.filter((sample) => sample.split('\n').some((line) => line.trim().length > 0 && line.trim().length < 70)).length;
-  const hasQuestions = samples.filter((sample) => sample.includes('?')).length;
-  const hasFirstPerson = samples.filter((sample) => /\b(eu|meu|minha|pra mim|no meu)\b/i.test(sample)).length;
-
-  return [
-    `Perfil consolidado a partir de ${samples.length} posts reais.`,
-    `Tamanho medio: ${avgLength} caracteres.`,
-    hasShortLines >= samples.length / 2 ? 'Costuma usar linhas curtas e quebras para dar ritmo.' : 'Costuma desenvolver mais a ideia em paragrafos.',
-    hasQuestions ? 'Usa perguntas como recurso, mas sem transformar tudo em chamada generica.' : 'Nao depende de perguntas para abrir os posts.',
-    hasFirstPerson ? 'Tem marca de experiencia propria e bastidor em primeira pessoa.' : 'A voz tende a ser mais analitica do que confessional.',
-    'Priorizar vocabulario, ritmo e cortes presentes nos posts reais. Evitar frases prontas, hype e tom de marca.',
-  ].join('\n');
 }
 
 function ideaToResearchItem(idea: ContentIdea): XResearchItem {
@@ -125,14 +103,10 @@ function pickVoiceReferences(idea: ContentIdea, posts: ExpertVoicePost[]) {
   return scored.slice(0, 3).map((item) => item.post);
 }
 
-function memoryLevel(total: number) {
-  if (total >= 16) return { label: 'forte', tone: 'emerald', text: 'Boa base para escrever com voz propria.' };
-  if (total >= 6) return { label: 'utilizavel', tone: 'amber', text: 'Ja ajuda, mas mais posts reais deixam a IA mais precisa.' };
-  return { label: 'fraca', tone: 'red', text: 'Pouco repertorio. A IA tende a cair no generico.' };
-}
-
 export default function BatchCreate() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const preselectedProjectId = searchParams.get('project') || '';
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectId, setProjectId] = useState('');
   const [voicePosts, setVoicePosts] = useState<ExpertVoicePost[]>([]);
@@ -146,6 +120,7 @@ export default function BatchCreate() {
   const [sourceText, setSourceText] = useState('');
   const [objective, setObjective] = useState('gerar posts para X com ponto de vista forte e voz do expert');
   const [formatMix, setFormatMix] = useState<FormatMix>('mixed');
+  const [targetLength, setTargetLength] = useState<TargetLength>('medium');
   const [count, setCount] = useState(6);
   const [voicePaste, setVoicePaste] = useState('');
 
@@ -158,16 +133,17 @@ export default function BatchCreate() {
   const selectedProject = useMemo(() => projects.find((project) => project.id === projectId), [projects, projectId]);
   const activeRun = useMemo(() => runs.find((run) => run.id === activeRunId) || runs[0], [runs, activeRunId]);
   const activeIdeas = useMemo(() => ideas.filter((idea) => idea.run_id === activeRun?.id), [ideas, activeRun?.id]);
-  const memory = memoryLevel(voicePosts.length + (selectedProject?.voice_samples?.length || 0));
+  const memory = voiceMemoryHealth(voicePosts, selectedProject?.voice_samples || []);
 
   useEffect(() => {
     db.getProjects()
       .then((data) => {
         setProjects(data);
-        if (data[0]) setProjectId(data[0].id);
+        if (preselectedProjectId && data.some((project) => project.id === preselectedProjectId)) setProjectId(preselectedProjectId);
+        else if (data[0]) setProjectId(data[0].id);
       })
       .catch(() => setError('Nao consegui carregar os experts.'));
-  }, []);
+  }, [preselectedProjectId]);
 
   useEffect(() => {
     if (!projectId) return;
@@ -233,7 +209,7 @@ export default function BatchCreate() {
 
   async function handleAddVoicePosts() {
     if (!selectedProject) return;
-    const samples = splitVoicePosts(voicePaste);
+    const samples = splitVoiceSamples(voicePaste);
     if (!samples.length) {
       setError('Cole posts reais separados por uma linha em branco.');
       return;
@@ -245,12 +221,14 @@ export default function BatchCreate() {
         project_id: selectedProject.id,
         text,
         source_type: 'manual',
-        tags: [],
+        memory_kind: 'real_post',
+        tags: ['real-post'],
         quality: 80,
         is_reference: true,
       })));
-      const mergedSamples = [...(selectedProject.voice_samples || []), ...samples].slice(-50);
-      const nextProfile = buildSimpleVoiceProfile(mergedSamples);
+      const currentPosts = await db.getExpertVoicePosts(selectedProject.id);
+      const mergedSamples = uniqueVoiceSamples(currentPosts, selectedProject.voice_samples || []).slice(-50);
+      const nextProfile = buildVoiceProfile(mergedSamples);
       const updated = await db.updateProject(selectedProject.id, {
         voice_samples: mergedSamples,
         voice_profile: nextProfile,
@@ -258,9 +236,9 @@ export default function BatchCreate() {
       setProjects((current) => current.map((project) => (project.id === updated.id ? updated : project)));
       setVoicePaste('');
       await refreshMachine();
-      setNotice(`${samples.length} posts reais adicionados a memoria do expert.`);
+      setNotice(`${samples.length} posts reais adicionados à memória do expert.`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Nao consegui salvar a memoria de voz.');
+      setError(err instanceof Error ? err.message : 'Não consegui salvar a memória de voz.');
     } finally {
       setBusyKey('');
     }
@@ -286,6 +264,7 @@ export default function BatchCreate() {
         objective: compactText(objective),
         format_mix: formatMix,
         requested_count: count,
+        target_length: targetLength,
       });
       setRuns((current) => [run, ...current]);
       setActiveRunId(run.id);
@@ -318,11 +297,15 @@ export default function BatchCreate() {
         topic: run.title,
         count: run.requested_count,
         formatMix: run.format_mix,
-        styleGuidance: run.objective,
+        styleGuidance: [
+          run.objective,
+          'Etapa Researcher: nao escreva copy ainda. Gere poucas ideias fortes e diferentes entre si.',
+          'Use Brand DNA, promessa, crenças e fonte. Não carregue exemplos longos de voz nesta etapa.',
+        ].join('\n'),
         brandDNA: selectedProject.brand_dna,
         knowledgeBase: selectedProject.knowledge_base,
-        voiceSamples: selectedProject.voice_samples,
-        approvedExamples,
+        voiceSamples: [],
+        approvedExamples: [],
         voiceLearningNotes: selectedProject.voice_learning_notes,
         voiceProfile: selectedProject.voice_profile,
         sources: [{ type: run.source_type, title: run.title, url: run.source_url, text: run.source_text }],
@@ -362,7 +345,7 @@ export default function BatchCreate() {
     try {
       const refs = pickVoiceReferences(idea, voicePosts);
       if (!refs.length) {
-        throw new Error('Este expert ainda nao tem posts reais suficientes na memoria de voz.');
+        throw new Error('Este expert ainda não tem posts reais suficientes na memória de voz.');
       }
       const updated = await db.updateContentIdea(idea.id, {
         status: 'voice_matched',
@@ -393,16 +376,21 @@ export default function BatchCreate() {
     setError('');
     try {
       const refs = voicePosts.filter((post) => idea.selected_voice_post_ids.includes(post.id));
+      const targetGuide = activeRun.target_length === 'short'
+        ? 'Formato curto: post unico ate 280 caracteres.'
+        : activeRun.target_length === 'thread'
+          ? 'Formato thread curta: 4 a 6 blocos fortes.'
+          : 'Formato medio: pode escrever com 500 a 900 caracteres quando for post unico; nao force frase de efeito.';
       const result = await generateXDraftsFromResearch({
         mode: 'topic',
         topic: activeRun.title,
         count: 1,
         formatMix: idea.best_format,
         researchItems: [ideaToResearchItem(idea)],
-        styleGuidance: activeRun.objective,
+        styleGuidance: [activeRun.objective, targetGuide, 'Use explicitamente as referencias reais de voz selecionadas. Evite qualquer frase com cara de IA.'].join('\n'),
         brandDNA: selectedProject.brand_dna,
         knowledgeBase: selectedProject.knowledge_base,
-        voiceSamples: [...refs.map((ref) => ref.text), ...(selectedProject.voice_samples || [])].slice(0, 12),
+        voiceSamples: refs.map((ref) => ref.text).slice(0, 6),
         approvedExamples: [],
         voiceLearningNotes: selectedProject.voice_learning_notes,
         voiceProfile: selectedProject.voice_profile,
@@ -446,7 +434,7 @@ export default function BatchCreate() {
         event_type: 'rejected_voice',
         format: idea.best_format,
         after_text: limitText(text, 900),
-        instruction: 'O usuario marcou este rascunho como fora da voz. Nao consolidar como memoria permanente.',
+        instruction: 'O usuário marcou este rascunho como fora da voz. Não consolidar como memória permanente.',
       });
       const updated = await db.updateContentIdea(idea.id, {
         status: 'draft',
@@ -454,7 +442,7 @@ export default function BatchCreate() {
         voice_review_notes: 'Marcado manualmente como fora da voz. Regerar antes de aprovar.',
       });
       setIdeaLocal(updated);
-      setNotice('Feedback registrado sem contaminar a memoria permanente.');
+      setNotice('Feedback registrado sem contaminar a memória permanente.');
     } finally {
       setBusyKey('');
     }
@@ -499,24 +487,15 @@ export default function BatchCreate() {
       await db.createVoiceLearningEvent({
         project_id: selectedProject.id,
         draft_id: draft.id,
-        event_type: 'approved',
+        event_type: 'sent_to_review',
         format: draft.format,
         after_text: limitText(text, 900),
-        instruction: 'Draft aprovado no Content Machine v3 e enviado para Para revisar.',
-      });
-      await db.createExpertVoicePost({
-        project_id: selectedProject.id,
-        text,
-        source_type: activeRun.source_type,
-        source_url: activeRun.source_url,
-        tags: ['approved-draft'],
-        quality: 85,
-        is_reference: true,
+        instruction: 'Draft enviado pelo Content Machine para revisão final no Board. Ainda não entra como memória permanente.',
       });
       const updated = await db.updateContentIdea(idea.id, { status: 'approved', draft_id: draft.id, error: '' });
       setIdeaLocal(updated);
       await refreshMachine(activeRun.id);
-      setNotice('Draft aprovado, salvo no Content Board e adicionado como sinal forte de voz.');
+      setNotice('Draft enviado para revisão final no Board. Ele só vira memória forte depois da aprovação no editor.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Nao consegui aprovar este draft.');
     } finally {
@@ -543,8 +522,8 @@ export default function BatchCreate() {
             <div className="inline-flex items-center gap-2 text-[11px] font-black uppercase tracking-widest text-indigo-300">
               <Sparkles className="h-4 w-4" /> Content Machine v3
             </div>
-            <h1 className="mt-2 text-3xl font-bold tracking-tight text-white">Memoria + Kanban de posts para X</h1>
-            <p className="mt-1 text-sm text-slate-500">Fonte, ideias, voz, rascunho e aprovacao em etapas claras.</p>
+            <h1 className="mt-2 text-3xl font-bold tracking-tight text-white">Content Machine</h1>
+            <p className="mt-1 text-sm text-slate-500">Fonte, ideias, voz, rascunho e revisão final em etapas claras.</p>
           </div>
         </div>
         <button onClick={() => navigate('/queue')} className={softButtonCls}>
@@ -557,7 +536,7 @@ export default function BatchCreate() {
 
       <section className="grid grid-cols-1 gap-4 lg:grid-cols-[1.2fr_0.8fr]">
         <div className="premium-card space-y-4 p-5">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-[1fr_180px_160px]">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-[1fr_170px_190px_150px]">
             <div className="space-y-2">
               <label className="premium-label">Expert</label>
               <select value={projectId} onChange={(event) => setProjectId(event.target.value)} className={inputCls}>
@@ -570,6 +549,14 @@ export default function BatchCreate() {
                 <option value="mixed">Misto</option>
                 <option value="x_post">Posts</option>
                 <option value="x_thread">Threads</option>
+              </select>
+            </div>
+            <div className="space-y-2">
+              <label className="premium-label">Tamanho</label>
+              <select value={targetLength} onChange={(event) => setTargetLength(event.target.value as TargetLength)} className={inputCls}>
+                <option value="medium">Médio editorial</option>
+                <option value="short">Curto até 280</option>
+                <option value="thread">Thread curta</option>
               </select>
             </div>
             <div className="space-y-2">
@@ -613,19 +600,19 @@ export default function BatchCreate() {
         <div className="premium-card space-y-4 p-5">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="premium-label">Memoria de voz</p>
+              <p className="premium-label">Memória de voz</p>
               <h2 className="mt-1 text-lg font-black text-white">Base {memory.label}</h2>
-              <p className="mt-1 text-sm text-slate-500">{memory.text}</p>
+              <p className="mt-1 text-sm text-slate-500">{memory.detail}</p>
             </div>
             <div className={`rounded-xl border px-3 py-2 text-center ${memory.tone === 'emerald' ? 'border-emerald-400/25 bg-emerald-500/10 text-emerald-100' : memory.tone === 'amber' ? 'border-amber-400/25 bg-amber-500/10 text-amber-100' : 'border-red-400/25 bg-red-500/10 text-red-100'}`}>
               <p className="text-2xl font-black">{voicePosts.length}</p>
               <p className="text-[10px] font-black uppercase tracking-widest">posts</p>
             </div>
           </div>
-          <textarea rows={8} value={voicePaste} onChange={(event) => setVoicePaste(event.target.value)} placeholder={'Cole posts reais do expert separados por linha em branco.\n\nIsso vira a memoria que o Voice Matcher usa antes de escrever.'} className={inputCls} />
+          <textarea rows={8} value={voicePaste} onChange={(event) => setVoicePaste(event.target.value)} placeholder={'Cole posts reais do expert separados por linha em branco.\n\nIsso vira a memória que o Voice Matcher usa antes de escrever.'} className={inputCls} />
           <button type="button" onClick={handleAddVoicePosts} disabled={busyKey === 'voice' || !selectedProject} className={softButtonCls}>
             {busyKey === 'voice' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            Salvar posts na memoria
+            Salvar posts na memória
           </button>
           <div className="space-y-2">
             {voicePosts.slice(0, 3).map((post) => (
@@ -817,7 +804,7 @@ function IdeaCard({
         {idea.status === 'ideas' || idea.status === 'error' ? (
           <button onClick={() => onMatchVoice(idea)} disabled={isBusy} className={softButtonCls}>
             {busyKey === `voice:${idea.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
-            Aprovar ideia
+            Escolher referências
           </button>
         ) : null}
 
@@ -832,7 +819,7 @@ function IdeaCard({
           <>
             <button onClick={() => onApproveDraft(idea)} disabled={isBusy || !text.trim()} className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-500 px-3 py-2 text-xs font-black text-white transition hover:bg-emerald-400 disabled:opacity-50">
               {busyKey === `approve:${idea.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-              Aprovar
+              Enviar para revisão
             </button>
             <button onClick={() => onRejectVoice(idea)} disabled={isBusy} className={softButtonCls}>
               <AlertTriangle className="h-4 w-4" /> Nao e minha voz

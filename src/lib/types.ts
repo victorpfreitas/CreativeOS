@@ -250,7 +250,7 @@ export interface VoiceLearningEvent {
   id: string;
   project_id: string;
   draft_id?: string;
-  event_type: 'approved' | 'edited' | 'regenerated' | 'scheduled' | 'rejected_voice' | 'used_as_reference';
+  event_type: 'approved' | 'edited' | 'regenerated' | 'scheduled' | 'rejected_voice' | 'used_as_reference' | 'sent_to_review';
   format?: ContentDraft['format'];
   before_text?: string;
   after_text?: string;
@@ -265,6 +265,7 @@ export interface ExpertVoicePost {
   text: string;
   source_url?: string;
   source_type?: 'manual' | 'x_post' | 'x_url' | 'youtube' | 'transcript' | 'notes';
+  memory_kind?: 'real_post' | 'approved_draft' | 'rejected_or_ai_only';
   tags: string[];
   quality: number;
   is_reference: boolean;
@@ -282,6 +283,7 @@ export interface ContentRun {
   objective: string;
   format_mix: 'x_post' | 'x_thread' | 'mixed';
   requested_count: number;
+  target_length?: 'short' | 'medium' | 'thread';
   status: 'source' | 'researching' | 'ideas_ready' | 'drafting' | 'ready' | 'error';
   current_stage: 'source' | 'researcher' | 'voice_matcher' | 'copywriter' | 'voice_reviewer' | 'board';
   error?: string;

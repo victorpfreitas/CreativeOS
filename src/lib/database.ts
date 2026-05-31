@@ -12,6 +12,7 @@ import type {
   ImageCollection, CollectionImage,
   CreateProjectInput, CreateAutomationInput, CreateCollectionInput,
   Slide, ContentAnalysis, ContentPlan, ContentBrief, ContentDraft, CreateContentDraftInput, VoiceLearningEvent,
+  ExpertVoicePost, ContentRun, ContentIdea,
 } from './types';
 
 type CreateSlideshowInput = {
@@ -83,6 +84,15 @@ type UpdateContentDraftInput = Partial<CreateContentDraftInput & {
   status: ContentDraft['status'];
   updated_at: string;
 }>;
+
+type CreateExpertVoicePostInput = Omit<ExpertVoicePost, 'id' | 'created_at' | 'updated_at'>;
+type CreateContentRunInput = Omit<ContentRun, 'id' | 'status' | 'current_stage' | 'created_at' | 'updated_at'> & {
+  status?: ContentRun['status'];
+  current_stage?: ContentRun['current_stage'];
+};
+type UpdateContentRunInput = Partial<Omit<ContentRun, 'id' | 'created_at' | 'updated_at'>>;
+type CreateContentIdeaInput = Omit<ContentIdea, 'id' | 'created_at' | 'updated_at'>;
+type UpdateContentIdeaInput = Partial<Omit<ContentIdea, 'id' | 'created_at' | 'updated_at'>>;
 
 // Sort helper — avoids composite index requirement for compound queries
 function sortByCreatedAt<T extends { created_at?: string }>(arr: T[]): T[] {
@@ -325,6 +335,8 @@ export async function createContentDraft(input: CreateContentDraftInput): Promis
   const now = Timestamp.now().toDate().toISOString();
   const data = {
     ...input,
+    run_id: input.run_id || '',
+    idea_id: input.idea_id || '',
     status: input.status || 'review',
     scheduled_for: input.scheduled_for ?? null,
     thread_items: input.thread_items || [],
@@ -345,6 +357,8 @@ export async function createContentDraft(input: CreateContentDraftInput): Promis
     source_title: input.source_title || '',
     source_excerpt: input.source_excerpt || '',
     source_refs: input.source_refs || [],
+    selected_voice_post_ids: input.selected_voice_post_ids || [],
+    generation_trace: input.generation_trace || '',
     created_at: now,
     updated_at: now,
   };
@@ -366,6 +380,103 @@ export async function updateContentDraft(id: string, input: UpdateContentDraftIn
 
 export async function deleteContentDraft(id: string): Promise<void> {
   await deleteDoc(doc(db, 'content_drafts', id));
+}
+
+// ---- Content Machine v3 ----
+
+export async function getExpertVoicePosts(projectId: string): Promise<ExpertVoicePost[]> {
+  const q = query(collection(db, 'expert_voice_posts'), where('project_id', '==', projectId));
+  const snap = await getDocs(q);
+  return sortByCreatedAt(snap.docs.map((d) => docToObj<ExpertVoicePost>(d)));
+}
+
+export async function createExpertVoicePost(input: CreateExpertVoicePostInput): Promise<ExpertVoicePost> {
+  const now = Timestamp.now().toDate().toISOString();
+  const data = {
+    ...input,
+    tags: input.tags || [],
+    quality: Math.max(0, Math.min(100, Number(input.quality) || 70)),
+    is_reference: input.is_reference ?? true,
+    created_at: now,
+    updated_at: now,
+  };
+  const ref = await addDoc(collection(db, 'expert_voice_posts'), data);
+  return { id: ref.id, ...data } as ExpertVoicePost;
+}
+
+export async function createExpertVoicePosts(inputs: CreateExpertVoicePostInput[]): Promise<ExpertVoicePost[]> {
+  return Promise.all(inputs.map((input) => createExpertVoicePost(input)));
+}
+
+export async function updateExpertVoicePost(id: string, input: Partial<CreateExpertVoicePostInput>): Promise<ExpertVoicePost> {
+  const ref = doc(db, 'expert_voice_posts', id);
+  await updateDoc(ref, { ...input, updated_at: Timestamp.now().toDate().toISOString() });
+  const snap = await getDoc(ref);
+  return docToObj<ExpertVoicePost>(snap);
+}
+
+export async function getContentRuns(projectId: string): Promise<ContentRun[]> {
+  const q = query(collection(db, 'content_runs'), where('project_id', '==', projectId));
+  const snap = await getDocs(q);
+  return sortByCreatedAt(snap.docs.map((d) => docToObj<ContentRun>(d)));
+}
+
+export async function createContentRun(input: CreateContentRunInput): Promise<ContentRun> {
+  const now = Timestamp.now().toDate().toISOString();
+  const data = {
+    ...input,
+    status: input.status || 'source',
+    current_stage: input.current_stage || 'source',
+    error: '',
+    created_at: now,
+    updated_at: now,
+  };
+  const ref = await addDoc(collection(db, 'content_runs'), data);
+  return { id: ref.id, ...data } as ContentRun;
+}
+
+export async function updateContentRun(id: string, input: UpdateContentRunInput): Promise<ContentRun> {
+  const ref = doc(db, 'content_runs', id);
+  await updateDoc(ref, { ...input, updated_at: Timestamp.now().toDate().toISOString() });
+  const snap = await getDoc(ref);
+  return docToObj<ContentRun>(snap);
+}
+
+export async function getContentIdeas(projectId: string): Promise<ContentIdea[]> {
+  const q = query(collection(db, 'content_ideas'), where('project_id', '==', projectId));
+  const snap = await getDocs(q);
+  return sortByCreatedAt(snap.docs.map((d) => docToObj<ContentIdea>(d)));
+}
+
+export async function getContentIdeasByRun(runId: string): Promise<ContentIdea[]> {
+  const q = query(collection(db, 'content_ideas'), where('run_id', '==', runId));
+  const snap = await getDocs(q);
+  return sortByCreatedAt(snap.docs.map((d) => docToObj<ContentIdea>(d)));
+}
+
+export async function createContentIdeas(inputs: CreateContentIdeaInput[]): Promise<ContentIdea[]> {
+  const now = Timestamp.now().toDate().toISOString();
+  return Promise.all(inputs.map(async (input) => {
+    const data = {
+      ...input,
+      risk_flags: input.risk_flags || [],
+      selected_voice_post_ids: input.selected_voice_post_ids || [],
+      draft_thread_items: input.draft_thread_items || [],
+      draft_variants: input.draft_variants || [],
+      error: input.error || '',
+      created_at: now,
+      updated_at: now,
+    };
+    const ref = await addDoc(collection(db, 'content_ideas'), data);
+    return { id: ref.id, ...data } as ContentIdea;
+  }));
+}
+
+export async function updateContentIdea(id: string, input: UpdateContentIdeaInput): Promise<ContentIdea> {
+  const ref = doc(db, 'content_ideas', id);
+  await updateDoc(ref, { ...input, updated_at: Timestamp.now().toDate().toISOString() });
+  const snap = await getDoc(ref);
+  return docToObj<ContentIdea>(snap);
 }
 
 export async function createVoiceLearningEvent(

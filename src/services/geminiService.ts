@@ -519,114 +519,6 @@ function dedupeAngles(angles: string[], count: number): string[] {
   return result;
 }
 
-function sourceSeedText(sources?: XBatchSource[]): string {
-  const source = sources?.find((item) => compactText(item.text) || compactText(item.title)) || sources?.[0];
-  return limitText(source?.text || source?.title || source?.url || '', 220);
-}
-
-function sourceTopicLabel(topic?: string, sources?: XBatchSource[]): string {
-  const explicit = compactText(topic);
-  if (explicit) return limitText(explicit, 72);
-  const source = sources?.find((item) => compactText(item.title)) || sources?.find((item) => compactText(item.text));
-  const title = compactText(source?.title);
-  if (title) return limitText(title.replace(/^as redes sociais morreram\s*/i, 'redes sociais e autoridade'), 72);
-  const firstSentence = compactText(source?.text).split(/[.!?\n]/).map((item) => item.trim()).find((item) => item.length > 18);
-  return limitText(firstSentence || 'conteudo e autoridade', 72);
-}
-
-function fallbackSourceInsights(sources?: XBatchSource[]): string[] {
-  const text = compactText(sources?.map((source) => source.text || source.title || '').join('\n'));
-  const sentences = text
-    .split(/[.!?\n]/)
-    .map((item) => item.trim())
-    .filter((item) => item.length >= 32 && item.length <= 180)
-    .filter((item, index, arr) => arr.findIndex((candidate) => candidate.toLowerCase() === item.toLowerCase()) === index)
-    .slice(0, 4);
-  return sentences.length ? sentences : [
-    'A discussao central precisa virar um ponto de vista, nao apenas um resumo.',
-    'O material tem potencial, mas precisa de criterio editorial antes de virar post.',
-    'A melhor pauta nasce quando uma fonte encontra uma opiniao forte do expert.',
-    'O conteudo deve gerar conversa qualificada, nao apenas preencher calendario.',
-  ];
-}
-
-function fallbackResearchPlan(params: {
-  topic?: string;
-  count: number;
-  formatMix: 'x_post' | 'x_thread' | 'mixed';
-  sources?: XBatchSource[];
-}): XResearchPlan {
-  const seed = sourceSeedText(params.sources);
-  const base = sourceTopicLabel(params.topic, params.sources);
-  const insights = fallbackSourceInsights(params.sources);
-  const fallbackCount = Math.min(params.count, 4);
-  const frames = [
-    ['diagnosis', `Diagnosticar o que mudou em ${base}`, `A tese precisa mostrar qual comportamento ficou obsoleto e qual criterio substitui isso.`],
-    ['contrarian', `Contrapor a leitura obvia sobre ${base}`, `O angulo forte nao repete a fonte: ele discorda, aprofunda ou muda a interpretacao.`],
-    ['framework', `Criar um criterio pratico para ${base}`, `A audiencia precisa sair com uma forma melhor de decidir, nao so com uma opiniao.`],
-    ['mistake', `Apontar o erro que transforma ${base} em conteudo raso`, `O risco e usar a fonte como resumo, sem conectar com experiencia e ponto de vista.`],
-  ] as const;
-
-  const items = Array.from({ length: fallbackCount }, (_, index) => {
-    const frame = frames[index % frames.length];
-    const insight = insights[index % insights.length];
-    return normalizeResearchItem({
-      angle: frame[1],
-      thesis: `${frame[2]} Fonte usada como pista: ${insight}`,
-      why_it_matters: 'Esta e uma recuperacao local porque a IA nao devolveu uma analise confiavel. Use como ponto de partida, nao como pauta final.',
-      conversation_trigger: 'Pergunta de revisao: qual opiniao sua deixa esse angulo menos generico?',
-      content_job: frame[0],
-      best_format: pickBatchFormat(params.formatMix, index),
-      quality_score: 41,
-      risk_flags: ['Modo recuperacao: IA nao analisou a fonte com profundidade', 'Regerar recomendado antes de aprovar em lote'],
-      source_note: seed || 'Gerado a partir do tema e do Brand DNA disponivel.',
-    }, index, params.formatMix);
-  });
-
-  return {
-    topic_diagnosis: 'A IA demorou para responder. Mostrei poucos angulos de recuperacao para voce revisar ou tentar gerar novamente.',
-    audience_tensions: ['Quer produzir mais, mas sem sacrificar voz e criterio.'],
-    beliefs_to_challenge: ['Mais posts nao compensam uma tese fraca.'],
-    items,
-  };
-}
-
-function fallbackDraftFromResearch(item: XResearchItem, format: ContentDraft['format'], index: number): XBatchItem {
-  const thesis = limitText(item.thesis || item.angle, 240);
-  const body = limitText(`${thesis} O ponto nao e postar mais. E ter uma ideia clara o bastante para alguem concordar, discordar ou lembrar de voce depois.`, 270);
-  const threadItems = [
-    limitText(item.angle, 270),
-    limitText(thesis, 270),
-    limitText(item.why_it_matters || 'Sem criterio, a ferramenta so aumenta o volume do que ja estava generico.', 270),
-    limitText(item.conversation_trigger || 'A pergunta util: isso cria conversa qualificada ou so ocupa calendario?', 270),
-  ];
-
-  return {
-    title: limitText(item.angle || `Post ${index + 1}`, 90),
-    hook: limitText(item.angle || thesis, 270),
-    body: format === 'x_thread' ? '' : body,
-    thread_items: format === 'x_thread' ? threadItems : [],
-    objective: 'Fallback gerado para manter o lote andando quando a IA demorou demais.',
-    variants: [
-      limitText(`O problema nao e falta de conteudo. E falta de tese sobre ${item.angle}`, 270),
-      limitText(`Mais volume nao corrige uma ideia fraca: ${thesis}`, 270),
-      limitText(`Antes de postar mais, eu olharia para isso: ${item.angle}`, 270),
-    ],
-    voice_notes_used: 'Modo fallback: revisar voz e especificidade antes de aprovar.',
-    angle: item.angle,
-    format,
-    research_thesis: item.thesis,
-    research_context: compactText([
-      item.why_it_matters ? `Por que importa: ${item.why_it_matters}` : '',
-      item.conversation_trigger ? `Gatilho de conversa: ${item.conversation_trigger}` : '',
-      item.source_note ? `Fonte/insight: ${item.source_note}` : '',
-    ].filter(Boolean).join('\n')),
-    voice_review_score: 45,
-    voice_review_verdict: 'needs_review',
-    voice_review_notes: 'Fallback local porque a IA demorou demais. Use como rascunho, nao como versao final.',
-  };
-}
-
 export async function generateXResearchPlan(params: XBatchBaseParams): Promise<XResearchPlan> {
   const {
     mode,
@@ -697,7 +589,9 @@ Generate ${count} items. Write in pt-BR.`;
       .filter((item) => item.angle && item.thesis)
       .slice(0, count);
 
-    if (items.length === 0) return fallbackResearchPlan({ topic, count, formatMix, sources });
+    if (items.length === 0) {
+      throw new Error('A IA nao encontrou ideias boas o suficiente. Tente com uma fonte mais clara ou reduza a quantidade.');
+    }
 
     return {
       topic_diagnosis: compactText(raw.topic_diagnosis),
@@ -705,8 +599,10 @@ Generate ${count} items. Write in pt-BR.`;
       beliefs_to_challenge: Array.isArray(raw.beliefs_to_challenge) ? raw.beliefs_to_challenge.map((item) => limitText(item, 160)).filter(Boolean).slice(0, 5) : [],
       items,
     };
-  } catch {
-    return fallbackResearchPlan({ topic, count, formatMix, sources });
+  } catch (err) {
+    throw err instanceof Error
+      ? err
+      : new Error('Nao consegui gerar ideias agora. A etapa ficou salva para tentar novamente.');
   }
 }
 
@@ -865,11 +761,11 @@ Return ONLY a JSON array of ${chunkSpec.length} objects with this exact structur
           voice_review_notes: limitText(entry.voice_review_notes, 320),
         });
       });
-    } catch {
+    } catch (err) {
       failedChunks += 1;
-      chunkSpec.forEach((spec, indexInChunk) => {
-        items.push(fallbackDraftFromResearch(spec, spec.format, chunkIndex * BATCH_CHUNK_SIZE + indexInChunk));
-      });
+      throw err instanceof Error
+        ? err
+        : new Error('Nao consegui escrever os posts desta etapa. Tente novamente neste card.');
     }
 
     onProgress?.(Math.min(items.length, count), count, 'copywriter');

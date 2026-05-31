@@ -212,6 +212,8 @@ export interface ContentPlan {
 export interface ContentDraft {
   id: string;
   project_id: string;
+  run_id?: string;
+  idea_id?: string;
   format: 'x_post' | 'x_thread';
   status: 'review' | 'approved' | 'scheduled';
   scheduled_for: string | null;
@@ -236,6 +238,8 @@ export interface ContentDraft {
   source_title?: string;
   source_excerpt?: string;
   source_refs?: string[];
+  selected_voice_post_ids?: string[];
+  generation_trace?: string;
   created_at: string;
   updated_at: string;
   // Joined fields
@@ -253,6 +257,68 @@ export interface VoiceLearningEvent {
   instruction?: string;
   learning_note?: string;
   created_at: string;
+}
+
+export interface ExpertVoicePost {
+  id: string;
+  project_id: string;
+  text: string;
+  source_url?: string;
+  source_type?: 'manual' | 'x_post' | 'x_url' | 'youtube' | 'transcript' | 'notes';
+  tags: string[];
+  quality: number;
+  is_reference: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ContentRun {
+  id: string;
+  project_id: string;
+  title: string;
+  source_type: 'manual' | 'x_post' | 'x_url' | 'youtube' | 'transcript' | 'notes';
+  source_url?: string;
+  source_text: string;
+  objective: string;
+  format_mix: 'x_post' | 'x_thread' | 'mixed';
+  requested_count: number;
+  status: 'source' | 'researching' | 'ideas_ready' | 'drafting' | 'ready' | 'error';
+  current_stage: 'source' | 'researcher' | 'voice_matcher' | 'copywriter' | 'voice_reviewer' | 'board';
+  error?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ContentIdea {
+  id: string;
+  run_id: string;
+  project_id: string;
+  status: 'ideas' | 'voice_matched' | 'draft' | 'approved' | 'rejected' | 'error';
+  angle: string;
+  thesis: string;
+  why_it_matters: string;
+  conversation_trigger: string;
+  content_job: 'contrarian' | 'framework' | 'mistake' | 'story' | 'proof' | 'tactical' | 'diagnosis';
+  best_format: ContentDraft['format'];
+  quality_score: number;
+  risk_flags: string[];
+  source_note: string;
+  selected_voice_post_ids: string[];
+  voice_reference_excerpt?: string;
+  draft_title?: string;
+  draft_hook?: string;
+  draft_body?: string;
+  draft_thread_items?: string[];
+  draft_objective?: string;
+  draft_variants?: string[];
+  voice_notes_used?: string;
+  voice_review_score?: number;
+  voice_review_verdict?: ContentDraft['voice_review_verdict'];
+  voice_review_notes?: string;
+  draft_id?: string;
+  error?: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface XContentDraftResult {
@@ -302,6 +368,8 @@ export interface CreateProjectInput {
 
 export interface CreateContentDraftInput {
   project_id: string;
+  run_id?: string;
+  idea_id?: string;
   format: ContentDraft['format'];
   status?: ContentDraft['status'];
   scheduled_for?: string | null;
@@ -326,6 +394,8 @@ export interface CreateContentDraftInput {
   source_title?: string;
   source_excerpt?: string;
   source_refs?: string[];
+  selected_voice_post_ids?: string[];
+  generation_trace?: string;
 }
 
 export interface CreateAutomationInput {

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Layers, Loader2, Sparkles, Check, AlertTriangle } from 'lucide-react';
+import { Layers, Loader2, Sparkles, Check, AlertTriangle, Save, Wand2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import type { ContentDraft, Project } from '../lib/types';
 import * as db from '../lib/database';
@@ -9,6 +9,7 @@ const inputCls = 'w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3
 
 type Mode = 'pillars' | 'topic';
 type FormatMix = 'x_post' | 'x_thread' | 'mixed';
+type CopyMode = 'voz' | 'provocativo' | 'direto' | 'didatico' | 'autoridade';
 
 function draftPreviewText(item: XBatchItem) {
   return item.format === 'x_thread'
@@ -32,6 +33,12 @@ export default function BatchCreate() {
   const [topic, setTopic] = useState('');
   const [count, setCount] = useState(12);
   const [formatMix, setFormatMix] = useState<FormatMix>('mixed');
+  const [copyMode, setCopyMode] = useState<CopyMode>('voz');
+  const [copyIntensity, setCopyIntensity] = useState(3);
+  const [styleReference, setStyleReference] = useState('');
+  const [avoidList, setAvoidList] = useState('frases prontas, tom motivacional, promessas exageradas, hashtags, emojis');
+  const [qualityBar, setQualityBar] = useState('Cada post precisa ter uma opiniao clara, um exemplo concreto e uma frase que eu realmente falaria.');
+  const [savingVoiceRules, setSavingVoiceRules] = useState(false);
 
   const [items, setItems] = useState<XBatchItem[]>([]);
   const [kept, setKept] = useState<Set<number>>(new Set());
@@ -40,6 +47,7 @@ export default function BatchCreate() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [learningIndex, setLearningIndex] = useState('');
 
   useEffect(() => {
     db.getProjects()
@@ -51,6 +59,72 @@ export default function BatchCreate() {
   }, []);
 
   const selectedProject = useMemo(() => projects.find((project) => project.id === projectId), [projects, projectId]);
+
+  function buildStyleGuidance() {
+    const modeLabel: Record<CopyMode, string> = {
+      voz: 'Priorizar minha voz real acima de formulas de copy.',
+      provocativo: 'Mais provocativo: tese forte, corte de senso comum, sem agressividade gratuita.',
+      direto: 'Mais direto: frases curtas, sem introducao longa, ponto de vista logo na primeira linha.',
+      didatico: 'Mais didatico: explicar o raciocinio com clareza, mas sem virar tutorial generico.',
+      autoridade: 'Mais autoridade: mostrar criterio, experiencia e padroes de decisao, sem autoelogio.',
+    };
+
+    return [
+      `Modo de copy: ${modeLabel[copyMode]}`,
+      `Intensidade: ${copyIntensity}/5. 1 = sutil, 5 = bem afiado.`,
+      styleReference ? `Escreva mais parecido com estes exemplos ou notas minhas:\n${styleReference}` : '',
+      avoidList ? `Evite explicitamente:\n${avoidList}` : '',
+      qualityBar ? `Criterio minimo para aprovar:\n${qualityBar}` : '',
+      'Nao tente parecer viral a qualquer custo. Prefira texto que eu teria coragem de postar no meu perfil.',
+      'Se a ideia ficar generica, reescreva com mais especificidade antes de responder.',
+    ].filter(Boolean).join('\n\n');
+  }
+
+  async function handleSaveVoiceRules() {
+    if (!selectedProject) return;
+    const guidance = buildStyleGuidance();
+    setSavingVoiceRules(true);
+    setError('');
+    try {
+      const existing = selectedProject.voice_learning_notes?.trim();
+      const nextNotes = [existing, `Diretrizes manuais para lotes de X:\n${guidance}`].filter(Boolean).join('\n\n').slice(0, 2400);
+      await db.updateProjectVoiceLearningNotes(selectedProject.id, nextNotes);
+      setProjects((current) => current.map((project) => (
+        project.id === selectedProject.id ? { ...project, voice_learning_notes: nextNotes } : project
+      )));
+      setNotice('Diretrizes salvas na voz do expert. Os proximos lotes vao usar essa base.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Nao consegui salvar as diretrizes de voz.');
+    } finally {
+      setSavingVoiceRules(false);
+    }
+  }
+
+  async function handleLearnFromItem(index: number, kind: 'good' | 'bad') {
+    if (!selectedProject || !items[index]) return;
+    const item = items[index];
+    const text = draftPreviewText(item).slice(0, 900);
+    const marker = kind === 'good'
+      ? `Exemplo aprovado como referencia de voz:\n${text}`
+      : `Evitar este tipo de resultado em lotes futuros:\n${text}`;
+    setLearningIndex(`${kind}:${index}`);
+    setError('');
+    try {
+      const existing = selectedProject.voice_learning_notes?.trim();
+      const nextNotes = [existing, marker].filter(Boolean).join('\n\n').slice(0, 2600);
+      await db.updateProjectVoiceLearningNotes(selectedProject.id, nextNotes);
+      setProjects((current) => current.map((project) => (
+        project.id === selectedProject.id ? { ...project, voice_learning_notes: nextNotes } : project
+      )));
+      setNotice(kind === 'good'
+        ? 'Salvei este post como referencia positiva de voz para os proximos lotes.'
+        : 'Salvei este resultado como exemplo do que evitar nos proximos lotes.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Nao consegui atualizar a memoria de voz.');
+    } finally {
+      setLearningIndex('');
+    }
+  }
 
   async function handleGenerate() {
     if (!selectedProject) {
@@ -74,6 +148,7 @@ export default function BatchCreate() {
         topic: topic.trim(),
         count,
         formatMix,
+        styleGuidance: buildStyleGuidance(),
         brandDNA: selectedProject.brand_dna,
         knowledgeBase: selectedProject.knowledge_base,
         voiceSamples: selectedProject.voice_samples,
@@ -208,8 +283,54 @@ export default function BatchCreate() {
           </div>
         </div>
 
+        <div className="rounded-2xl border border-indigo-400/20 bg-indigo-500/[0.04] p-4">
+          <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <label className="premium-label">Direcao de escrita</label>
+              <p className="mt-1 text-sm text-slate-500">Use este bloco para calibrar copy, conteudo e voz antes de gerar o lote.</p>
+            </div>
+            <button type="button" onClick={handleSaveVoiceRules} disabled={!selectedProject || savingVoiceRules} className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-bold text-slate-200 transition hover:bg-white/[0.08] disabled:opacity-50">
+              {savingVoiceRules ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              Salvar no expert
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <label className="premium-label">Estilo de copy</label>
+              <select value={copyMode} onChange={(event) => setCopyMode(event.target.value as CopyMode)} className={inputCls}>
+                <option value="voz">Mais com minha voz</option>
+                <option value="provocativo">Mais provocativo</option>
+                <option value="direto">Mais direto</option>
+                <option value="didatico">Mais didatico</option>
+                <option value="autoridade">Mais autoridade</option>
+              </select>
+            </div>
+            <div className="space-y-2">
+              <label className="premium-label">Intensidade ({copyIntensity}/5)</label>
+              <input type="range" min={1} max={5} value={copyIntensity} onChange={(event) => setCopyIntensity(Number(event.target.value))} className="w-full accent-indigo-500" />
+            </div>
+          </div>
+
+          <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <label className="premium-label">Parece comigo quando...</label>
+              <textarea rows={5} value={styleReference} onChange={(event) => setStyleReference(event.target.value)} placeholder={'Cole 1-3 posts seus ou escreva regras curtas.\nEx: eu escrevo frases curtas, com tese logo no inicio, sem floreio.'} className={inputCls} />
+            </div>
+            <div className="space-y-2">
+              <label className="premium-label">Nao escrever assim</label>
+              <textarea rows={5} value={avoidList} onChange={(event) => setAvoidList(event.target.value)} className={inputCls} />
+            </div>
+          </div>
+
+          <div className="mt-4 space-y-2">
+            <label className="premium-label">Barra minima de qualidade</label>
+            <textarea rows={3} value={qualityBar} onChange={(event) => setQualityBar(event.target.value)} className={inputCls} />
+          </div>
+        </div>
+
         <button onClick={handleGenerate} disabled={generating || !projectId} className="premium-button-primary flex items-center gap-2 disabled:opacity-50">
-          {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+          {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
           {generating ? `Gerando ${progress.done}/${progress.total}...` : 'Gerar lote'}
         </button>
       </section>
@@ -229,7 +350,7 @@ export default function BatchCreate() {
 
           <div className="space-y-3">
             {items.map((item, index) => (
-              <label key={index} className={`block cursor-pointer rounded-2xl border p-4 transition ${kept.has(index) ? 'border-indigo-400/40 bg-indigo-500/[0.06]' : 'border-white/10 bg-black/20 opacity-60'}`}>
+              <div key={index} className={`block rounded-2xl border p-4 transition ${kept.has(index) ? 'border-indigo-400/40 bg-indigo-500/[0.06]' : 'border-white/10 bg-black/20 opacity-60'}`}>
                 <div className="flex items-start gap-3">
                   <input type="checkbox" checked={kept.has(index)} onChange={() => toggleKeep(index)} className="mt-1 h-4 w-4 accent-indigo-500" />
                   <div className="min-w-0 flex-1">
@@ -238,9 +359,19 @@ export default function BatchCreate() {
                       {item.angle && <span className="truncate text-slate-500 normal-case font-medium tracking-normal">· {item.angle}</span>}
                     </div>
                     <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-200">{draftPreviewText(item)}</p>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <button type="button" onClick={() => handleLearnFromItem(index, 'good')} disabled={Boolean(learningIndex)} className="inline-flex items-center gap-2 rounded-lg border border-emerald-400/20 bg-emerald-500/10 px-3 py-1.5 text-xs font-bold text-emerald-200 transition hover:bg-emerald-500/15 disabled:opacity-50">
+                        {learningIndex === `good:${index}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                        Usar como referencia
+                      </button>
+                      <button type="button" onClick={() => handleLearnFromItem(index, 'bad')} disabled={Boolean(learningIndex)} className="inline-flex items-center gap-2 rounded-lg border border-amber-400/20 bg-amber-500/10 px-3 py-1.5 text-xs font-bold text-amber-100 transition hover:bg-amber-500/15 disabled:opacity-50">
+                        {learningIndex === `bad:${index}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <AlertTriangle className="h-3.5 w-3.5" />}
+                        Nao e minha voz
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </label>
+              </div>
             ))}
           </div>
         </section>

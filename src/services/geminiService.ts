@@ -374,6 +374,13 @@ export interface XBatchResult {
   failedChunks: number;
 }
 
+function buildBatchStyleGuide(styleGuidance?: string): string {
+  const guide = compactText(styleGuidance);
+  if (!guide) return '';
+  return `Batch writing direction from the human operator. Treat this as higher priority than generic style rules:
+${guide}`;
+}
+
 function pickBatchFormat(formatMix: 'x_post' | 'x_thread' | 'mixed', index: number): ContentDraft['format'] {
   if (formatMix === 'mixed') return index % 3 === 2 ? 'x_thread' : 'x_post';
   return formatMix;
@@ -399,6 +406,7 @@ export async function generateXContentBatch(params: {
   topic?: string;
   count?: number;
   formatMix?: 'x_post' | 'x_thread' | 'mixed';
+  styleGuidance?: string;
   brandDNA?: BrandDNA;
   knowledgeBase?: string;
   voiceSamples?: string[];
@@ -410,6 +418,7 @@ export async function generateXContentBatch(params: {
     mode,
     topic,
     formatMix = 'mixed',
+    styleGuidance,
     brandDNA,
     knowledgeBase,
     voiceSamples,
@@ -419,6 +428,7 @@ export async function generateXContentBatch(params: {
   } = params;
   const count = Math.max(1, Math.min(30, Math.round(params.count || 12)));
   const voiceContext = buildVoiceContext({ brandDNA, knowledgeBase, voiceSamples, approvedExamples, voiceLearningNotes });
+  const styleGuide = buildBatchStyleGuide(styleGuidance);
 
   // Etapa 1 — outline de angulos distintos.
   const outlinePrompt = `You are an elite X/Twitter content strategist for a high-trust expert.
@@ -428,6 +438,7 @@ ${mode === 'topic'
     : `Generate ${count} distinct, non-overlapping content angles for this expert's X account, derived from their content pillars and recurring angles. Cover a wide spread (contrarian takes, frameworks, mistakes, stories, proof, tactical how-to).`}
 
 ${voiceContext ? `${voiceContext}\n` : ''}
+${styleGuide ? `${styleGuide}\n` : ''}
 
 Rules:
 - Each angle is a short sentence describing the specific idea/hook of one post.
@@ -473,6 +484,7 @@ Angles (write one draft per angle, in this exact order):
 ${chunkSpec.map((spec, index) => `${index + 1}. [${spec.format === 'x_thread' ? 'THREAD' : 'SINGLE POST'}] ${spec.angle}`).join('\n')}
 
 ${voiceContext ? `${voiceContext}\n` : ''}
+${styleGuide ? `${styleGuide}\n` : ''}
 
 ${ANTI_GENERIC_RULES}
 
@@ -503,7 +515,34 @@ Return ONLY a JSON array of ${chunkSpec.length} objects with this exact structur
     onProgress?.(Math.min(produced, count), count);
   }
 
-  return { items, requested: count, failedChunks };
+  if (items.length < count) {
+    const existingAngles = new Set(items.map((item) => item.angle.toLowerCase()));
+    const missingAngles = angles.filter((angle) => !existingAngles.has(angle.toLowerCase())).slice(0, count - items.length);
+    for (const angle of missingAngles) {
+      const format = pickBatchFormat(formatMix, items.length);
+      try {
+        const draft = await generateXContentDraft({
+          format,
+          topic: angle,
+          goal: 'Gerar um post de alta qualidade para o lote, sem soar generico.',
+          sourceNotes: styleGuide,
+          brandDNA,
+          knowledgeBase,
+          voiceSamples,
+          approvedExamples,
+          voiceLearningNotes,
+          refinementInstruction: 'Fallback de lote: gere apenas um draft forte para completar a quantidade solicitada.',
+        });
+        items.push({ ...draft, angle: draft.angle || angle, format });
+      } catch {
+        failedChunks += 1;
+      }
+      onProgress?.(Math.min(items.length, count), count);
+      if (items.length >= count) break;
+    }
+  }
+
+  return { items: items.slice(0, count), requested: count, failedChunks };
 }
 
 export async function generateVoiceLearningNotes(params: {

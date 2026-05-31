@@ -437,6 +437,7 @@ export default function CreateContent() {
           ].filter(Boolean).join('\n\n'),
           brandDNA: selectedProject?.brand_dna,
           knowledgeBase: selectedProject?.knowledge_base,
+          voiceSamples: selectedProject?.voice_samples,
           voiceLearningNotes: selectedProject?.voice_learning_notes,
         });
         setXDraft(result);

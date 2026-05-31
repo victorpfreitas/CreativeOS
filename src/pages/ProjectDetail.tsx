@@ -70,6 +70,7 @@ export default function ProjectDetail() {
   const [project, setProject] = useState<Project | null>(null);
   const [name, setName] = useState('');
   const [dna, setDna] = useState<BrandDNA>(EMPTY_DNA);
+  const [voiceSamplesText, setVoiceSamplesText] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -85,6 +86,7 @@ export default function ProjectDetail() {
       setProject(data);
       setName(data.name);
       setDna({ ...EMPTY_DNA, ...(data.brand_dna ?? {}) });
+      setVoiceSamplesText((data.voice_samples ?? []).join('\n\n'));
     } catch (err) {
       console.error(err);
     } finally {
@@ -105,7 +107,8 @@ export default function ProjectDetail() {
     setSaving(true);
     try {
       const compiled = compileBrandDNA(dna);
-      await db.updateProject(project.id, { name: name.trim(), brand_dna: dna, knowledge_base: compiled });
+      const voiceSamples = voiceSamplesText.split(/\n\s*\n/).map((sample) => sample.trim()).filter(Boolean);
+      await db.updateProject(project.id, { name: name.trim(), brand_dna: dna, knowledge_base: compiled, voice_samples: voiceSamples });
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
     } catch (err) {
@@ -280,6 +283,9 @@ export default function ProjectDetail() {
         </Field>
         <Field label="Mensagens-chave" hint="O que a marca nunca deixa de comunicar?">
           <textarea rows={3} value={dna.key_messages} onChange={(e) => set('key_messages', e.target.value)} placeholder="Ex: Produtividade é sobre clareza, não velocidade. Resultados sustentáveis exigem sistemas." className={inputCls} />
+        </Field>
+        <Field label="Posts reais do expert (few-shot)" hint="Cole 3 a 10 posts REAIS do expert, separados por uma linha em branco. Quanto mais autênticos, mais humana fica a geração de conteúdo.">
+          <textarea rows={8} value={voiceSamplesText} onChange={(e) => setVoiceSamplesText(e.target.value)} placeholder={'Cole um post real aqui.\n\nDeixe uma linha em branco entre cada post.\n\nA IA vai imitar o ritmo, vocabulário e pontuação destes exemplos.'} className={inputCls} />
         </Field>
       </Section>
 

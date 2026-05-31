@@ -166,6 +166,107 @@ export function compileBrandDNA(dna: BrandDNA): string {
   return parts.join('\n');
 }
 
+// ---- Voice / Few-shot ----
+
+// Regras compartilhadas para soar humano e nao-generico, injetadas nos prompts de X.
+const ANTI_GENERIC_RULES = `Voice rules (critical for sounding human):
+- Match the rhythm, sentence length, punctuation, and vocabulary of the REAL example posts above. They are the source of truth for voice.
+- Do not use AI/marketing cliches: "no mundo de hoje", "vamos mergulhar", "game-changer", "desbloqueie", "o segredo que ninguem te conta", "isso muda tudo", "bora", rhetorical "Parece familiar?".
+- No emojis and no hashtags unless they appear in the real example posts.
+- No engagement bait ("comenta X", "marca alguem"), no fake urgency, no motivational filler, no hollow hype.
+- Prefer concrete specifics, real stakes, and one sharp idea over vague generalities.
+- Sound like a person typing fast with a strong point of view, not a brand account.`;
+
+function renderVoiceSamples(samples: string[] | undefined, label: string, max: number): string {
+  if (!samples?.length) return '';
+  const cleaned = samples
+    .map((sample) => compactText(sample))
+    .filter(Boolean)
+    .slice(0, max)
+    .map((sample, index) => `[${index + 1}]\n${limitText(sample, 600)}`);
+  return cleaned.length ? `${label}\n${cleaned.join('\n\n')}` : '';
+}
+
+// Monta o bloco de voz: Brand DNA + amostras reais (few-shot) + drafts aprovados + notas aprendidas.
+export function buildVoiceContext(params: {
+  brandDNA?: BrandDNA;
+  knowledgeBase?: string;
+  voiceSamples?: string[];
+  approvedExamples?: string[];
+  voiceLearningNotes?: string;
+  maxSamples?: number;
+}): string {
+  const { brandDNA, knowledgeBase, voiceSamples, approvedExamples, voiceLearningNotes, maxSamples = 6 } = params;
+  const brandContext = brandDNA ? compileBrandDNA(brandDNA) : knowledgeBase;
+  const blocks = [
+    brandContext ? `Expert Brand DNA:\n${brandContext}` : '',
+    renderVoiceSamples(
+      voiceSamples,
+      'REAL posts written by this expert (mirror their voice, rhythm, sentence length, punctuation, vocabulary):',
+      maxSamples
+    ),
+    renderVoiceSamples(
+      approvedExamples,
+      'Recently approved drafts (the expert accepted these — stay consistent with them):',
+      4
+    ),
+    voiceLearningNotes ? `Learned voice notes from previous human edits:\n${voiceLearningNotes}` : '',
+  ].filter(Boolean);
+  return blocks.join('\n\n');
+}
+
+// Parser tolerante para respostas em array (objeto unico, array puro ou JSON cercado).
+export function parseAIJsonArray<T>(text: string, label: string): T[] {
+  const cleaned = cleanJsonText(text);
+  try {
+    const parsed = JSON.parse(cleaned);
+    if (Array.isArray(parsed)) return parsed as T[];
+    if (parsed && typeof parsed === 'object') return [parsed as T];
+    throw new Error('not array');
+  } catch {
+    // Fallback: tenta extrair o primeiro array do texto.
+    const start = cleaned.indexOf('[');
+    const end = cleaned.lastIndexOf(']');
+    if (start >= 0 && end > start) {
+      try {
+        const parsed = JSON.parse(cleaned.slice(start, end + 1));
+        if (Array.isArray(parsed)) return parsed as T[];
+      } catch {
+        // continua para o erro abaixo
+      }
+    }
+    throw new Error(`A IA retornou um formato inválido para ${label}. Tente gerar novamente.`);
+  }
+}
+
+// Normaliza um resultado bruto de X (limites de caractere, fallbacks) — usado no single e no lote.
+function normalizeXResult(
+  result: Partial<XContentDraftResult>,
+  format: ContentDraft['format'],
+  topic: string,
+  voiceLearningNotes?: string
+): XContentDraftResult {
+  const isThread = format === 'x_thread';
+  const threadItems = Array.isArray(result.thread_items)
+    ? result.thread_items.map((item) => limitText(item, 270)).filter(Boolean).slice(0, 7)
+    : [];
+  const body = isThread ? '' : limitText(result.body || result.hook, 270);
+  const normalizedThreadItems = isThread
+    ? (threadItems.length > 0 ? threadItems : [limitText(result.hook || result.body, 270)].filter(Boolean))
+    : [];
+
+  return {
+    title: limitText(result.title || topic || result.hook || 'Draft para X', 90),
+    hook: limitText(result.hook || body || normalizedThreadItems[0] || topic, 270),
+    body,
+    thread_items: normalizedThreadItems,
+    objective: compactText(result.objective),
+    variants: Array.isArray(result.variants) ? result.variants.map((item) => limitText(item, 270)).filter(Boolean).slice(0, 3) : [],
+    voice_notes_used: compactText(result.voice_notes_used || voiceLearningNotes || ''),
+    angle: compactText(result.angle),
+  };
+}
+
 // ---- Generate X Content Draft ----
 
 export async function generateXContentDraft(params: {
@@ -176,6 +277,8 @@ export async function generateXContentDraft(params: {
   sourceNotes?: string;
   brandDNA?: BrandDNA;
   knowledgeBase?: string;
+  voiceSamples?: string[];
+  approvedExamples?: string[];
   voiceLearningNotes?: string;
   refinementInstruction?: string;
   currentDraft?: Pick<ContentDraft, 'body' | 'thread_items' | 'hook' | 'objective'>;
@@ -188,11 +291,13 @@ export async function generateXContentDraft(params: {
     sourceNotes,
     brandDNA,
     knowledgeBase,
+    voiceSamples,
+    approvedExamples,
     voiceLearningNotes,
     refinementInstruction,
     currentDraft,
   } = params;
-  const brandContext = brandDNA ? compileBrandDNA(brandDNA) : knowledgeBase;
+  const voiceContext = buildVoiceContext({ brandDNA, knowledgeBase, voiceSamples, approvedExamples, voiceLearningNotes });
   const isThread = format === 'x_thread';
   const currentText = currentDraft
     ? [
@@ -219,16 +324,14 @@ ${audience || 'Seguidores e potenciais clientes do expert.'}
 Source notes:
 ${sourceNotes || 'Not provided'}
 
-${brandContext ? `Expert Brand DNA:\n${brandContext}\n` : ''}
-${voiceLearningNotes ? `Learned voice notes from previous human edits:\n${voiceLearningNotes}\n` : ''}
+${voiceContext ? `${voiceContext}\n` : ''}
 ${currentText ? `Current draft to improve:\n${currentText}\n` : ''}
 ${refinementInstruction ? `Refinement instruction:\n${refinementInstruction}\n` : ''}
 
+${ANTI_GENERIC_RULES}
+
 Rules:
 - Write with authority, specificity, and a strong point of view.
-- Sound like a real expert, not generic marketing copy.
-- Avoid empty hype, engagement bait, fake certainty, and motivational filler.
-- Use short paragraphs and natural rhythm for X.
 - For a single post, body must be at most 270 characters.
 - For a thread, create 4 to 7 items; each item must be at most 270 characters.
 - Do not number thread items inside the item text.
@@ -248,23 +351,154 @@ Return ONLY a valid JSON object with this exact structure:
 
   const text = await callAI(prompt);
   const result = parseAIJson<XContentDraftResult>(text, 'post para X');
-  const threadItems = Array.isArray(result.thread_items)
-    ? result.thread_items.map((item) => limitText(item, 270)).filter(Boolean).slice(0, 7)
-    : [];
-  const body = isThread ? '' : limitText(result.body || result.hook, 270);
-  const normalizedThreadItems = isThread
-    ? (threadItems.length > 0 ? threadItems : [limitText(result.hook || result.body, 270)].filter(Boolean))
-    : [];
+  return normalizeXResult(result, format, topic, voiceLearningNotes);
+}
 
-  return {
-    title: limitText(result.title || topic || result.hook || 'Draft para X', 90),
-    hook: limitText(result.hook || body || normalizedThreadItems[0] || topic, 270),
-    body,
-    thread_items: normalizedThreadItems,
-    objective: compactText(result.objective),
-    variants: Array.isArray(result.variants) ? result.variants.map((item) => limitText(item, 270)).filter(Boolean).slice(0, 3) : [],
-    voice_notes_used: compactText(result.voice_notes_used || voiceLearningNotes || ''),
-  };
+// ---- Generate X Content Batch ----
+
+const BATCH_CHUNK_SIZE = 4;
+
+export interface XBatchItem extends XContentDraftResult {
+  angle: string;
+  format: ContentDraft['format'];
+}
+
+export interface XBatchResult {
+  items: XBatchItem[];
+  requested: number;
+  failedChunks: number;
+}
+
+function pickBatchFormat(formatMix: 'x_post' | 'x_thread' | 'mixed', index: number): ContentDraft['format'] {
+  if (formatMix === 'mixed') return index % 3 === 2 ? 'x_thread' : 'x_post';
+  return formatMix;
+}
+
+function dedupeAngles(angles: string[], count: number): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const raw of angles) {
+    const angle = compactText(raw);
+    const key = angle.toLowerCase();
+    if (!angle || seen.has(key)) continue;
+    seen.add(key);
+    result.push(angle);
+    if (result.length >= count) break;
+  }
+  return result;
+}
+
+// Gera muitos drafts de X de uma vez: 1 call de outline (angulos) + N calls de expansao em chunks.
+export async function generateXContentBatch(params: {
+  mode: 'pillars' | 'topic';
+  topic?: string;
+  count?: number;
+  formatMix?: 'x_post' | 'x_thread' | 'mixed';
+  brandDNA?: BrandDNA;
+  knowledgeBase?: string;
+  voiceSamples?: string[];
+  approvedExamples?: string[];
+  voiceLearningNotes?: string;
+  onProgress?: (done: number, total: number) => void;
+}): Promise<XBatchResult> {
+  const {
+    mode,
+    topic,
+    formatMix = 'mixed',
+    brandDNA,
+    knowledgeBase,
+    voiceSamples,
+    approvedExamples,
+    voiceLearningNotes,
+    onProgress,
+  } = params;
+  const count = Math.max(1, Math.min(30, Math.round(params.count || 12)));
+  const voiceContext = buildVoiceContext({ brandDNA, knowledgeBase, voiceSamples, approvedExamples, voiceLearningNotes });
+
+  // Etapa 1 — outline de angulos distintos.
+  const outlinePrompt = `You are an elite X/Twitter content strategist for a high-trust expert.
+
+${mode === 'topic'
+    ? `Generate ${count} distinct, non-overlapping angles for X content all about this topic:\n${topic || 'Autoridade e posicionamento do expert'}`
+    : `Generate ${count} distinct, non-overlapping content angles for this expert's X account, derived from their content pillars and recurring angles. Cover a wide spread (contrarian takes, frameworks, mistakes, stories, proof, tactical how-to).`}
+
+${voiceContext ? `${voiceContext}\n` : ''}
+
+Rules:
+- Each angle is a short sentence describing the specific idea/hook of one post.
+- Angles must be genuinely different from each other.
+- Write in pt-BR.
+
+Return ONLY a JSON array of ${count} strings.`;
+
+  let angles: string[] = [];
+  try {
+    const outlineText = await callAI(outlinePrompt);
+    angles = dedupeAngles(parseAIJsonArray<string>(outlineText, 'ângulos do lote'), count);
+  } catch {
+    angles = [];
+  }
+  if (angles.length === 0) {
+    throw new Error('Não consegui gerar os ângulos do lote. Tente novamente.');
+  }
+
+  // Etapa 2 — expansao em chunks (respeita o limite de tokens por call).
+  const chunks: string[][] = [];
+  for (let i = 0; i < angles.length; i += BATCH_CHUNK_SIZE) {
+    chunks.push(angles.slice(i, i + BATCH_CHUNK_SIZE));
+  }
+
+  const items: XBatchItem[] = [];
+  let failedChunks = 0;
+  let produced = 0;
+
+  for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex += 1) {
+    const chunk = chunks[chunkIndex];
+    const chunkSpec = chunk.map((angle, indexInChunk) => {
+      const globalIndex = chunkIndex * BATCH_CHUNK_SIZE + indexInChunk;
+      const format = pickBatchFormat(formatMix, globalIndex);
+      return { angle, format };
+    });
+
+    const expandPrompt = `You are an elite ghostwriter for X/Twitter, writing for a high-trust expert.
+
+Write ${chunkSpec.length} separate X drafts in pt-BR, one for each angle below. Keep each draft in the expert's voice.
+
+Angles (write one draft per angle, in this exact order):
+${chunkSpec.map((spec, index) => `${index + 1}. [${spec.format === 'x_thread' ? 'THREAD' : 'SINGLE POST'}] ${spec.angle}`).join('\n')}
+
+${voiceContext ? `${voiceContext}\n` : ''}
+
+${ANTI_GENERIC_RULES}
+
+Rules:
+- Respect each item's format: SINGLE POST → fill "body" (<=270 chars), empty "thread_items". THREAD → 4 to 7 "thread_items" (each <=270 chars), empty "body".
+- Do not number thread items inside the item text.
+- Include 3 short alternative hooks in "variants".
+- "angle" must echo the angle this draft addresses.
+
+Return ONLY a JSON array of ${chunkSpec.length} objects with this exact structure:
+[
+  {"angle":"the angle","title":"short internal title","hook":"strongest opening line","body":"single post body or empty for thread","thread_items":["t1","t2"],"objective":"strategic reason","variants":["v1","v2","v3"],"voice_notes_used":"voice signals used"}
+]`;
+
+    try {
+      const text = await callAI(expandPrompt);
+      const raw = parseAIJsonArray<Partial<XContentDraftResult>>(text, 'lote de posts para X');
+      raw.forEach((entry, indexInChunk) => {
+        const spec = chunkSpec[indexInChunk] || chunkSpec[chunkSpec.length - 1];
+        const normalized = normalizeXResult(entry, spec.format, entry.angle || spec.angle, voiceLearningNotes);
+        items.push({ ...normalized, angle: normalized.angle || spec.angle, format: spec.format });
+      });
+    } catch {
+      failedChunks += 1;
+    }
+
+    produced += chunk.length;
+    onProgress?.(Math.min(produced, count), count);
+  }
+
+  return { items, requested: count, failedChunks };
 }
 
 export async function generateVoiceLearningNotes(params: {

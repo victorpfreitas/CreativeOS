@@ -171,6 +171,7 @@ export default function TextDraftEditor() {
         sourceNotes: draft.source_notes,
         brandDNA: draft.project?.brand_dna,
         knowledgeBase: draft.project?.knowledge_base,
+        voiceSamples: draft.project?.voice_samples,
         voiceLearningNotes: draft.project?.voice_learning_notes,
         refinementInstruction: instruction,
         currentDraft: { ...draft, body, thread_items: threadItems },

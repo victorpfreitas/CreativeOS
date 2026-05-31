@@ -333,11 +333,18 @@ export async function createContentDraft(input: CreateContentDraftInput): Promis
     objective: input.objective || '',
     hook: input.hook || '',
     variants: input.variants || [],
+    content_angle: input.content_angle || '',
+    batch_id: input.batch_id || '',
     created_at: now,
     updated_at: now,
   };
   const ref = await addDoc(collection(db, 'content_drafts'), data);
   return { id: ref.id, ...data } as ContentDraft;
+}
+
+// Bulk save for batch generation — mirrors createHooks.
+export async function createContentDrafts(inputs: CreateContentDraftInput[]): Promise<ContentDraft[]> {
+  return Promise.all(inputs.map((input) => createContentDraft(input)));
 }
 
 export async function updateContentDraft(id: string, input: UpdateContentDraftInput): Promise<ContentDraft> {
